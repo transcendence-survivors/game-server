@@ -2,7 +2,11 @@ import { Server } from 'colyseus';
 import { BunWebSockets } from '@colyseus/bun-websockets';
 import { GameRoom } from './rooms/GameRoom';
 
-const PORT = Number(process.env.GAME_RT_PORT ?? 2567);
+const { PORT } = process.env;
+
+if (!PORT) {
+	throw new Error('PORT is not defined in environment variables');
+}
 
 const gameServer = new Server({
 	transport: new BunWebSockets({}),
