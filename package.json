@@ -1,0 +1,21 @@
+{
+  "name": "game-rt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "build": "bun build src/index.ts --target=bun --outdir=dist"
+  },
+  "dependencies": {
+    "@colyseus/bun-websockets": "^0.16.0",
+    "@colyseus/schema": "^3.0.0",
+    "@transcendence/game-shared": "*",
+    "colyseus": "^0.16.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.18",
+    "typescript": "~5.9.3"
+  }
+}
