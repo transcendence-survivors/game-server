@@ -11,6 +11,15 @@ import { Player } from './Player';
 
 export class GameState extends Schema {
 	/**
+	 * Monotonically increasing simulation tick number, bumped once per
+	 * `setSimulationInterval` callback.
+	 *
+	 * Exposed in the state so clients can render server-side throughput (and
+	 * detect stalls — a constant value over time means the simulation stopped).
+	 */
+	@type('number') tick: number = 0;
+
+	/**
 	 * All connected players keyed by their `sessionId`.
 	 *
 	 * Using {@link MapSchema} gives Colyseus per-entry add/remove notifications

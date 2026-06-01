@@ -22,6 +22,15 @@ export class Player extends Schema {
 	/** Authoritative world position Z (meters). */
 	@type('number') z: number = 0;
 
+	/**
+	 * Latest round-trip latency reported by this player's own client, in ms.
+	 *
+	 * The server never measures this itself — it only echoes Ping with Pong and
+	 * writes whatever the client reports back via ReportLatency (clamped to a
+	 * sane range to keep the panel honest). Zero means "no measurement yet".
+	 */
+	@type('number') latencyMs: number = 0;
+
 	// -------------------------- Server-only state ---------------------------
 
 	/** Velocity X (m/s). Computed by {@link MovementSystem}. */

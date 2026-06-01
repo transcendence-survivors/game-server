@@ -11,7 +11,14 @@
  */
 
 import { Room, type Client } from 'colyseus';
-import { ClientMessage, type InputCommand } from '@transcendence/game-shared';
+import {
+	ClientMessage,
+	ServerMessage,
+	type InputCommand,
+	type PingPayload,
+	type PongPayload,
+	type ReportLatencyPayload,
+} from '@transcendence/game-shared';
 
 import { loadConfig, type GameConfig } from '../core/ConfigLoader';
 import { GameState } from '../schemas/GameState';
@@ -36,6 +43,10 @@ export class GameRoom extends Room<GameState> {
 		this.physics = new PhysicsSystem(this.config.physics);
 
 		this.onMessage<InputCommand>(ClientMessage.Input, (client, msg) => this.handleInput(client, msg));
+		this.onMessage<PingPayload>(ClientMessage.Ping, (client, msg) => this.handlePing(client, msg));
+		this.onMessage<ReportLatencyPayload>(ClientMessage.ReportLatency, (client, msg) =>
+			this.handleReportLatency(client, msg),
+		);
 
 		const tickMs = 1000 / this.config.room.tickRate;
 		this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), tickMs);
@@ -73,8 +84,31 @@ export class GameRoom extends Room<GameState> {
 		}
 	}
 
+	/** Echo the client timestamp so the client can compute RTT without clock sync. */
+	private handlePing(client: Client, msg: PingPayload): void {
+		const pong: PongPayload = { t: msg.t };
+		client.send(ServerMessage.Pong, pong);
+	}
+
+	/**
+	 * Trust the client's own RTT measurement but clamp it: a buggy or hostile
+	 * client must not be able to render absurd values in every other client's
+	 * panel. 9999 ms is well past any playable latency.
+	 */
+	private handleReportLatency(client: Client, msg: ReportLatencyPayload): void {
+		const player = this.state.players.get(client.sessionId);
+		if (player === undefined) {
+			return;
+		}
+		const raw = Number.isFinite(msg.latencyMs) ? msg.latencyMs : 0;
+		player.latencyMs = Math.max(0, Math.min(9999, Math.round(raw)));
+	}
+
 	private tick(dt: number): void {
 		this.movement.update(this.state, dt);
 		this.physics.update(this.state, dt);
+		// Wrap before Number.MAX_SAFE_INTEGER so the counter never produces NaN.
+		// At the default 30 Hz that's still ~9.5 years of uptime — purely defensive.
+		this.state.tick = (this.state.tick + 1) % Number.MAX_SAFE_INTEGER;
 	}
 }
