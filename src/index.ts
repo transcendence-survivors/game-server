@@ -1,19 +1,19 @@
-import { Server } from 'colyseus';
-import { BunWebSockets } from '@colyseus/bun-websockets';
-import { GameRoom } from './rooms/GameRoom';
+/**
+ * @file Bun entry point — loads config, starts the server, logs readiness.
+ *
+ * Run with `bun --watch src/index.ts` in development.
+ */
 
-const { PORT } = process.env;
+import { loadConfig } from './core/ConfigLoader';
+import { createGameServer } from './core/Server';
 
-if (!PORT) {
-	throw new Error('PORT is not defined in environment variables');
-}
+const PORT = Number(process.env.PORT ?? 4000);
 
-const gameServer = new Server({
-	transport: new BunWebSockets({}),
-});
+// Load and validate config first so we crash early on a malformed JSON.
+const config = loadConfig();
+console.log(
+	`[server] config loaded — tickRate=${config.room.tickRate}Hz, maxPlayers=${config.room.maxPlayers}`,
+);
 
-gameServer.define('survivor', GameRoom);
-
-gameServer.listen(PORT).then(() => {
-	console.log(`[game-rt] Colyseus listening on ws://0.0.0.0:${PORT}`);
-});
+createGameServer(PORT);
+console.log(`[server] listening on :${PORT}`);

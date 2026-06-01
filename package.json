@@ -1,12 +1,15 @@
 {
-	"name": "game-rt",
-	"version": "0.0.0",
+	"name": "@transcendence/game-server",
+	"version": "0.1.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"start": "bun src/index.ts",
 		"dev": "bun --watch src/index.ts",
-		"build": "bun build src/index.ts --target=bun --outdir=dist"
+		"build": "bun build src/index.ts --target=bun --outdir=dist",
+		"typecheck": "tsc --noEmit",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
 	},
 	"dependencies": {
 		"@colyseus/bun-websockets": "^0.16.0",

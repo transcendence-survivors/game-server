@@ -1,0 +1,6 @@
+{
+	"maxPlayers": 2,
+	"tickRate": 30,
+	"spawnHeight": 0.5,
+	"spawnSpread": 3
+}

@@ -1,49 +1,80 @@
-import { Room, Client } from 'colyseus';
-import { GameState, PlayerState } from '../state/GameState';
+/**
+ * @file Colyseus room — the orchestration layer between transport and systems.
+ *
+ * Responsibilities (and only these):
+ * 1. Lifecycle hooks: `onCreate` / `onJoin` / `onLeave` / `onDispose`.
+ * 2. Wire incoming client messages into the {@link Player} input fields.
+ * 3. Drive the tick pipeline: {@link MovementSystem} → {@link PhysicsSystem}.
+ *
+ * The room contains **no gameplay logic itself**. All math lives in the
+ * systems, all parameters live in the configs.
+ */
 
-const TICK_RATE_HZ = 30;
+import { Room, type Client } from 'colyseus';
+import { ClientMessage, type InputCommand } from '@transcendence/game-shared';
+
+import { loadConfig, type GameConfig } from '../core/ConfigLoader';
+import { GameState } from '../schemas/GameState';
+import { Player } from '../schemas/Player';
+import { MovementSystem } from '../systems/MovementSystem';
+import { PhysicsSystem } from '../systems/PhysicsSystem';
 
 export class GameRoom extends Room<GameState> {
-	override maxClients = 16;
+	// Initialised in onCreate. Non-null because Colyseus always calls onCreate
+	// before any other lifecycle hook.
+	private config!: GameConfig;
+	private movement!: MovementSystem;
+	private physics!: PhysicsSystem;
 
-	override onCreate(_options: unknown): void {
+	override onCreate(): void {
+		this.config = loadConfig();
+		this.maxClients = this.config.room.maxPlayers;
+
 		this.setState(new GameState());
-		this.state.startedAt = Date.now();
 
-		this.onMessage('latency_probe', (client) => {
-			client.send('latency_probe_ack', { serverTime: Date.now() });
-		});
+		this.movement = new MovementSystem(this.config.physics);
+		this.physics = new PhysicsSystem(this.config.physics);
 
-		this.onMessage('report_run', (client, payload: { score?: number; survivedMs?: number }) => {
-			const score = payload?.score ?? 0;
-			const ms = payload?.survivedMs ?? 0;
-			console.log(`[GameRoom] run reported: ${client.sessionId} score=${score} time=${ms}ms`);
-		});
+		this.onMessage<InputCommand>(ClientMessage.Input, (client, msg) => this.handleInput(client, msg));
 
-		this.setSimulationInterval((dt) => this.tick(dt), 1000 / TICK_RATE_HZ);
-
-		console.log(`[GameRoom] created (id=${this.roomId})`);
+		const tickMs = 1000 / this.config.room.tickRate;
+		this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), tickMs);
 	}
 
-	override onJoin(client: Client, options: { name?: string }): void {
-		const player = new PlayerState();
-		player.sessionId = client.sessionId;
-		player.name = options?.name ?? 'Player';
-		player.joinedAt = Date.now();
+	override onJoin(client: Client): void {
+		const player = new Player();
+		player.id = client.sessionId;
+
+		// Spread spawns along X so cubes don't overlap on join.
+		const slot = this.state.players.size;
+		player.x = (slot - (this.config.room.maxPlayers - 1) / 2) * this.config.room.spawnSpread;
+		player.y = this.config.room.spawnHeight;
+		player.z = 0;
+
 		this.state.players.set(client.sessionId, player);
-		console.log(`[GameRoom] joined: ${client.sessionId} (${player.name})`);
+		console.log(`[GameRoom] +join ${client.sessionId} (slot ${slot})`);
 	}
 
 	override onLeave(client: Client): void {
 		this.state.players.delete(client.sessionId);
-		console.log(`[GameRoom] left: ${client.sessionId}`);
+		console.log(`[GameRoom] -leave ${client.sessionId}`);
 	}
 
-	override onDispose(): void {
-		console.log(`[GameRoom] disposed (id=${this.roomId})`);
+	private handleInput(client: Client, msg: InputCommand): void {
+		const player = this.state.players.get(client.sessionId);
+		if (player === undefined) {
+			return;
+		}
+		player.inputMoveX = msg.moveX;
+		player.inputMoveZ = msg.moveZ;
+		// OR — never overwrite a pending jump with `false`; consumed by PhysicsSystem.
+		if (msg.jump) {
+			player.inputJump = true;
+		}
 	}
 
-	private tick(_deltaTimeMs: number): void {
-		this.state.tick++;
+	private tick(dt: number): void {
+		this.movement.update(this.state, dt);
+		this.physics.update(this.state, dt);
 	}
 }
