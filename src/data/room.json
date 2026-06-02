@@ -1,5 +1,5 @@
 {
-	"maxPlayers": 2,
+	"maxPlayers": 10,
 	"tickRate": 60,
 	"patchRate": 60,
 	"spawnHeight": 0.5,
