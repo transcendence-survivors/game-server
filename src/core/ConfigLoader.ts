@@ -30,6 +30,8 @@ export interface RoomConfig {
 	readonly maxPlayers: number;
 	/** Server simulation rate in Hz (ticks per second). */
 	readonly tickRate: number;
+	/** State broadcast rate in Hz (how often diffs are pushed to clients). */
+	readonly patchRate: number;
 	/** Y coordinate at which new players spawn. */
 	readonly spawnHeight: number;
 	/** X-axis distance between consecutive spawn slots. */

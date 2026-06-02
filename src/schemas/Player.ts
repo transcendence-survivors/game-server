@@ -31,6 +31,14 @@ export class Player extends Schema {
 	 */
 	@type('number') latencyMs: number = 0;
 
+	/**
+	 * Sequence number of the most recent input this player's client sent that
+	 * the server has applied. Broadcast so the client can acknowledge its
+	 * pending inputs and reconcile its local prediction. Zero before the first
+	 * input arrives.
+	 */
+	@type('number') lastSeq: number = 0;
+
 	// -------------------------- Server-only state ---------------------------
 
 	/** Velocity X (m/s). Computed by {@link MovementSystem}. */

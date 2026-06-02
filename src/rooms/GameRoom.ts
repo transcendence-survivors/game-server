@@ -50,6 +50,11 @@ export class GameRoom extends Room<GameState> {
 
 		const tickMs = 1000 / this.config.room.tickRate;
 		this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), tickMs);
+
+		// Broadcast state diffs at the configured rate (Colyseus defaults to 50ms
+		// / 20 Hz). A higher patch rate shortens the simulation→client delay at the
+		// cost of bandwidth — fine for a 2-player room.
+		this.setPatchRate(1000 / this.config.room.patchRate);
 	}
 
 	override onJoin(client: Client): void {
@@ -81,6 +86,12 @@ export class GameRoom extends Room<GameState> {
 		// OR — never overwrite a pending jump with `false`; consumed by PhysicsSystem.
 		if (msg.jump) {
 			player.inputJump = true;
+		}
+		// Acknowledge the latest input so the client can reconcile its prediction.
+		// WebSocket delivery is ordered, so seq is monotonic — guard against a
+		// malformed/absent value rather than letting it regress.
+		if (Number.isFinite(msg.seq) && msg.seq > player.lastSeq) {
+			player.lastSeq = msg.seq;
 		}
 	}
 
