@@ -24,10 +24,12 @@ export interface PhysicsConfig {
 	readonly groundY: number;
 }
 
-/** Room-level parameters (capacity, simulation rate, spawn placement). */
+/** Room-level parameters (capacity, simulation rate, spawn placement, lobby). */
 export interface RoomConfig {
 	/** Hard cap on connected clients per room instance. */
 	readonly maxPlayers: number;
+	/** Minimum ready players required before a lobby can auto-start the game. */
+	readonly minPlayers: number;
 	/** Server simulation rate in Hz (ticks per second). */
 	readonly tickRate: number;
 	/** State broadcast rate in Hz (how often diffs are pushed to clients). */
@@ -36,6 +38,14 @@ export interface RoomConfig {
 	readonly spawnHeight: number;
 	/** X-axis distance between consecutive spawn slots. */
 	readonly spawnSpread: number;
+	/** Maximum accepted length for a host-chosen room name (truncated beyond). */
+	readonly maxRoomNameLength: number;
+	/** Maximum accepted length for a player pseudonym (truncated beyond). */
+	readonly maxPlayerNameLength: number;
+	/** Minimum length the server accepts for a private room's password. */
+	readonly minPasswordLength: number;
+	/** Maximum accepted password length (caps work hashing an oversized input). */
+	readonly maxPasswordLength: number;
 }
 
 /** Aggregate root for all server-side configuration. */

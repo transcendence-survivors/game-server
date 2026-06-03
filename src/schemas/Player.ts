@@ -15,6 +15,16 @@ export class Player extends Schema {
 	/** Stable session id, equals the Colyseus `client.sessionId`. */
 	@type('string') id: string = '';
 
+	/** Pseudonym chosen at the menu. Shown in the lobby roster. Sanitized server-side. */
+	@type('string') name: string = '';
+
+	/**
+	 * Lobby ready flag. Toggled by {@link ClientMessage.ToggleReady}. When every
+	 * player in the room is ready (and the minimum is met) the game auto-starts.
+	 * Meaningless once the game is `playing`.
+	 */
+	@type('boolean') ready: boolean = false;
+
 	/** Authoritative world position X (meters). */
 	@type('number') x: number = 0;
 	/** Authoritative world position Y — height above ground (meters). */
