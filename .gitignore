@@ -111,3 +111,7 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Compiled terrain generator wasm — built by the Dockerfile (Rust stage) for the
+# image and by `make wasm` for local dev; never committed as a binary artifact.
+src/wasm/*.wasm

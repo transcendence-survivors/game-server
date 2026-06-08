@@ -25,17 +25,25 @@ import {
 	RoomMode,
 	RoomPhase,
 	KICK_LEAVE_CODE,
+	STREAM_RADIUS,
+	MIN_CHUNK,
+	MAX_CHUNK,
+	worldToChunk,
+	chunkKey,
 	type InputCommand,
 	type PingPayload,
 	type PongPayload,
 	type ReportLatencyPayload,
 	type KickPayload,
 	type KickedPayload,
+	type ChunkPayload,
+	type ChunkDropPayload,
 	type CreateGameOptions,
 	type JoinPublicOptions,
 } from '@transcendence/game-shared';
 
 import { loadConfig, type GameConfig } from '../core/ConfigLoader';
+import { TerrainService } from '../core/TerrainService';
 import { GameState } from '../schemas/GameState';
 import { Player } from '../schemas/Player';
 import { MovementSystem } from '../systems/MovementSystem';
@@ -45,21 +53,43 @@ import { assignSpawns, everyoneReady, nextHostId, sanitizeName } from './Lobby';
 /** Colyseus close code returned by `onAuth` rejections, surfaced to the client. */
 const AUTH_REJECT_CODE = 4001;
 
+/** Run the chunk streamer every N simulation ticks (≈4 Hz at a 60 Hz tick rate). */
+const STREAM_INTERVAL_TICKS = 15;
+
 export class GameRoom extends Room<GameState> {
 	// Initialised in onCreate. Non-null because Colyseus always calls onCreate
 	// before any other lifecycle hook.
 	private config!: GameConfig;
 	private movement!: MovementSystem;
 	private physics!: PhysicsSystem;
+	private terrain!: TerrainService;
 
 	/** Argon2 hash of the host-defined password. Empty for public rooms. */
 	private passwordHash = '';
 
+	/** True for a single-seat room that auto-starts the moment its creator joins. */
+	private isSolo = false;
+
+	/** Procedural world seed (mirrored into `state.seed`), chosen at creation. */
+	private seed = 0;
+
+	/** Per-client set of chunk keys currently streamed to that client. */
+	private readonly loadedChunks = new Map<string, Set<string>>();
+
+	/** Clients that have entered the world scene and may receive chunk streams. */
+	private readonly worldReady = new Set<string>();
+
 	override async onCreate(options: CreateGameOptions): Promise<void> {
 		this.config = loadConfig();
-		this.maxClients = this.config.room.maxPlayers;
+		this.terrain = await TerrainService.instance();
+		// One world seed per room, fixed at creation. 32-bit to match the wasm ABI.
+		this.seed = (Math.random() * 0x1_0000_0000) >>> 0;
 
 		const isPrivate = options?.mode === RoomMode.Private;
+		this.isSolo = options?.mode === RoomMode.Solo;
+		// Solo rooms hold exactly one player; everyone else uses the configured cap.
+		this.maxClients = this.isSolo ? 1 : this.config.room.maxPlayers;
+
 		const roomName = sanitizeName(
 			options?.roomName,
 			this.config.room.maxRoomNameLength,
@@ -86,7 +116,8 @@ export class GameRoom extends Room<GameState> {
 		const state = new GameState();
 		state.phase = RoomPhase.Lobby;
 		state.roomName = roomName;
-		state.mode = isPrivate ? RoomMode.Private : RoomMode.Public;
+		state.mode = this.isSolo ? RoomMode.Solo : isPrivate ? RoomMode.Private : RoomMode.Public;
+		state.seed = this.seed;
 		this.setState(state);
 
 		this.onMessage<InputCommand>(ClientMessage.Input, (client, msg) => this.handleInput(client, msg));
@@ -96,6 +127,7 @@ export class GameRoom extends Room<GameState> {
 		);
 		this.onMessage(ClientMessage.ToggleReady, (client) => this.handleToggleReady(client));
 		this.onMessage<KickPayload>(ClientMessage.Kick, (client, msg) => this.handleKick(client, msg));
+		this.onMessage(ClientMessage.EnterWorld, (client) => this.handleEnterWorld(client));
 
 		// The simulation loop does NOT start here — it starts in `startGame()`.
 		await this.refreshMetadata();
@@ -132,15 +164,24 @@ export class GameRoom extends Room<GameState> {
 			this.state.hostId = client.sessionId;
 		}
 
+		// A solo room has no lobby step: ready the lone player up so the shared
+		// start condition fires immediately and we drop straight into the game.
+		if (this.isSolo) {
+			player.ready = true;
+		}
+
 		this.state.players.set(client.sessionId, player);
 		console.log(`[GameRoom] +join ${client.sessionId} as "${player.name}"`);
 		void this.refreshMetadata();
 		updateLobby(this);
+		this.maybeStartGame();
 	}
 
 	override onLeave(client: Client): void {
 		const wasHost = this.state.hostId === client.sessionId;
 		this.state.players.delete(client.sessionId);
+		this.loadedChunks.delete(client.sessionId);
+		this.worldReady.delete(client.sessionId);
 		console.log(`[GameRoom] -leave ${client.sessionId}`);
 
 		// In the lobby, hand the host role to the next remaining player and
@@ -197,7 +238,9 @@ export class GameRoom extends Room<GameState> {
 		if (this.state.phase !== RoomPhase.Lobby) {
 			return;
 		}
-		if (everyoneReady(this.state, this.config.room.minPlayers)) {
+		// A solo room starts with its single player; others need the configured min.
+		const minPlayers = this.isSolo ? 1 : this.config.room.minPlayers;
+		if (everyoneReady(this.state, minPlayers)) {
 			void this.startGame();
 		}
 	}
@@ -214,9 +257,14 @@ export class GameRoom extends Room<GameState> {
 		await this.lock();
 
 		assignSpawns(this.state, this.config.room);
+		// Drop each spawn onto the terrain surface beneath it (spawns are spread
+		// near the origin by `assignSpawns`, which only knows the flat XZ layout).
+		for (const player of this.state.players.values()) {
+			player.y = this.terrain.heightAt(this.seed, player.x, player.z) + this.config.physics.groundY;
+		}
 
 		this.movement = new MovementSystem(this.config.physics);
-		this.physics = new PhysicsSystem(this.config.physics);
+		this.physics = new PhysicsSystem(this.config.physics, (x, z) => this.terrain.heightAt(this.seed, x, z));
 
 		const tickMs = 1000 / this.config.room.tickRate;
 		this.setSimulationInterval((deltaMs) => this.tick(deltaMs / 1000), tickMs);
@@ -286,5 +334,86 @@ export class GameRoom extends Room<GameState> {
 		// Wrap before Number.MAX_SAFE_INTEGER so the counter never produces NaN.
 		// At the default 30 Hz that's still ~9.5 years of uptime — purely defensive.
 		this.state.tick = (this.state.tick + 1) % Number.MAX_SAFE_INTEGER;
+
+		// Re-evaluate each player's streaming window periodically (not every tick —
+		// chunk membership only changes as players cross chunk boundaries).
+		if (this.state.tick % STREAM_INTERVAL_TICKS === 0) {
+			for (const client of this.clients) {
+				if (this.worldReady.has(client.sessionId)) {
+					this.streamChunks(client);
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------- terrain streaming
+
+	/**
+	 * Mark a client ready to receive terrain and send its initial window. Called
+	 * when the client signals it has entered the world scene, so the first burst is
+	 * never sent before the client's chunk handlers exist.
+	 */
+	private handleEnterWorld(client: Client): void {
+		if (this.state.phase !== RoomPhase.Playing) {
+			return;
+		}
+		this.worldReady.add(client.sessionId);
+		this.streamChunks(client);
+	}
+
+	/**
+	 * Reconcile a client's loaded chunks with the streaming window around its
+	 * player: send chunks that just entered range, drop chunks that left it.
+	 */
+	private streamChunks(client: Client): void {
+		const player = this.state.players.get(client.sessionId);
+		if (player === undefined) {
+			return;
+		}
+
+		const pcx = worldToChunk(player.x);
+		const pcz = worldToChunk(player.z);
+
+		let loaded = this.loadedChunks.get(client.sessionId);
+		if (loaded === undefined) {
+			loaded = new Set();
+			this.loadedChunks.set(client.sessionId, loaded);
+		}
+
+		// Desired window: a Chebyshev square of radius STREAM_RADIUS, clamped to
+		// the finite world's chunk range.
+		const desired = new Set<string>();
+		for (let dz = -STREAM_RADIUS; dz <= STREAM_RADIUS; dz += 1) {
+			for (let dx = -STREAM_RADIUS; dx <= STREAM_RADIUS; dx += 1) {
+				const cx = pcx + dx;
+				const cz = pcz + dz;
+				if (cx < MIN_CHUNK || cx >= MAX_CHUNK || cz < MIN_CHUNK || cz >= MAX_CHUNK) {
+					continue;
+				}
+				desired.add(chunkKey(cx, cz));
+			}
+		}
+
+		// Send chunks that entered range.
+		for (const key of desired) {
+			if (loaded.has(key)) {
+				continue;
+			}
+			const [cx, cz] = key.split(',').map(Number) as [number, number];
+			const payload: ChunkPayload = { cx, cz, data: this.terrain.chunk(this.seed, cx, cz) };
+			client.send(ServerMessage.Chunk, payload);
+			loaded.add(key);
+		}
+
+		// Drop chunks that left range.
+		for (const key of loaded) {
+			if (desired.has(key)) {
+				continue;
+			}
+			const [cx, cz] = key.split(',').map(Number) as [number, number];
+			const payload: ChunkDropPayload = { cx, cz };
+			client.send(ServerMessage.ChunkDrop, payload);
+			loaded.delete(key);
+		}
 	}
 }

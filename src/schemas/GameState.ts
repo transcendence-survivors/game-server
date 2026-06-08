@@ -42,6 +42,13 @@ export class GameState extends Schema {
 	@type('number') tick: number = 0;
 
 	/**
+	 * Procedural world seed for this room, chosen once at creation. Drives the
+	 * authoritative `terrain-gen` chunk generation; broadcast so clients can read
+	 * it (terrain itself is streamed as chunks, not regenerated client-side).
+	 */
+	@type('number') seed: number = 0;
+
+	/**
 	 * All connected players keyed by their `sessionId`.
 	 *
 	 * Using {@link MapSchema} gives Colyseus per-entry add/remove notifications
