@@ -14,6 +14,7 @@
 	"dependencies": {
 		"@colyseus/bun-websockets": "^0.16.0",
 		"@colyseus/schema": "^3.0.0",
+		"@colyseus/sdk": "^0.17.42",
 		"@transcendence/game-shared": "file:../shared-package",
 		"colyseus": "^0.16.0"
 	},
