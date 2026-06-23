@@ -6,6 +6,9 @@ import { GameRoom } from './GameRoom';
 matchMaker.controller.getCorsHeaders = () => ({
 	'Access-Control-Allow-Origin': 'http://localhost:5173',
 	'Access-Control-Allow-Credentials': 'true',
+	'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+	'Access-Control-Allow-Headers':
+		'Origin, X-Requested-With, Content-Type, Accept, Authorization',
 });
 
 const gameServer = new Server({ transport: new BunWebSockets() });

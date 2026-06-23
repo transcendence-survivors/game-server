@@ -12,6 +12,7 @@ export class GameRoom extends Room {
 				player.y = pos.y;
 				player.z = pos.z;
 			}
+			console.log(player);
 		});
 	}
 
