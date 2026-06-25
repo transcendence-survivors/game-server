@@ -1,7 +1,7 @@
-import { BunWebSockets } from '@colyseus/bun-websockets';
 import { env } from 'bun';
 import { matchMaker, Server } from 'colyseus';
 import { GameRoom } from './GameRoom';
+import { BunWebSockets } from '@colyseus/bun-websockets';
 
 matchMaker.controller.getCorsHeaders = () => ({
 	'Access-Control-Allow-Origin': 'http://localhost:5173',

@@ -12,11 +12,10 @@
 		"format:check": "prettier --check ."
 	},
 	"dependencies": {
-		"@colyseus/bun-websockets": "^0.16.0",
-		"@colyseus/schema": "^3.0.0",
-		"@colyseus/sdk": "^0.17.42",
+		"@colyseus/bun-websockets": "^0.17.13",
+		"@colyseus/schema": "^4.0.26",
 		"@transcendence/game-shared": "file:../shared-package",
-		"colyseus": "^0.16.0"
+		"colyseus": "^0.17.10"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.1.18",
