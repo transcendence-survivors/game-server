@@ -19,6 +19,12 @@ export class GameRoom extends Room {
 				...message,
 				deltaTime: Math.min(Math.max(message.deltaTime, 0), MAX_DT),
 			};
+			const moving =
+				clampedInput.forward ||
+				clampedInput.backward ||
+				clampedInput.right ||
+				clampedInput.left;
+			player.animState = moving ? 'moving' : 'idle';
 			const currentState: MovementState = {
 				x: player.x,
 				z: player.z,
