@@ -12,7 +12,6 @@ export class GameRoom extends Room {
 	onCreate() {
 		this.state = new GameState();
 		this.onMessage('move', (client: Client, message: MoveInput) => {
-			// your existing move logic
 			const player = this.state.players.get(client.sessionId);
 			if (!player) return;
 			const clampedInput: MoveInput = {
