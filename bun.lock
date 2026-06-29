@@ -5,6 +5,7 @@
     "": {
       "name": "@transcendence/game-server",
       "dependencies": {
+        "@babylonjs/core": "^9.14.0",
         "@colyseus/bun-websockets": "^0.17.13",
         "@colyseus/schema": "^4.0.26",
         "@transcendence/game-shared": "file:../shared-package",
@@ -17,6 +18,8 @@
     },
   },
   "packages": {
+    "@babylonjs/core": ["@babylonjs/core@9.14.0", "", {}, "sha512-gEXo5KF8wEu+k0bZbNLLfwW2LoIQm6d2ljdOc16p2kLapclVnHc4nZOk8q6l8N4scWD7GYM9WuX3au1namokiw=="],
+
     "@better-auth/utils": ["@better-auth/utils@0.3.1", "", {}, "sha512-+CGp4UmZSUrHHnpHhLPYu6cV+wSUSvVbZbNykxhUDocpVNTo9uFFxw/NqJlh1iC4wQ9HKKWGCKuZ5wUgS0v6Kg=="],
 
     "@better-fetch/fetch": ["@better-fetch/fetch@1.3.1", "", {}, "sha512-ABkD1WhyfPZprKRQI3bhATjeiFuNWC9PXhfGWqL+sg/gKrM977oFrYkdb4msM3hgUGonr7KlOsOFT5TU2rht9g=="],
