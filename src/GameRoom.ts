@@ -47,7 +47,11 @@ export class GameRoom extends Room {
 				z: player.z,
 				rotationY: player.rotationY,
 			};
-			let newState = applyMovement(currentState, clampedInput);
+			let newState = applyMovement(
+				currentState,
+				clampedInput,
+				clampedInput.cameraYaw,
+			);
 			const { x, z } = clampToRadius(
 				newState.x,
 				newState.z,
