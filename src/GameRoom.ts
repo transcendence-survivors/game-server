@@ -1,8 +1,13 @@
 import { Client, Room } from 'colyseus';
 // import { GameState, Player } from '@transcendence/game-shared';
-import { GameState, Player } from '../../shared-package';
 import {
-	applyMovement,
+	applyHorizontalMovement,
+	applyVerticalMovement,
+	GameState,
+	Player,
+	resolveTerrainCollision,
+} from '../../shared-package';
+import {
 	MAX_DT,
 	MoveInput,
 	MovementState,
@@ -45,12 +50,49 @@ export class GameRoom extends Room {
 			const currentState: MovementState = {
 				x: player.x,
 				z: player.z,
+				y: player.y,
 				rotationY: player.rotationY,
+				velocityY: player.velocityY,
+				isGrounded: player.isGrounded,
 			};
-			let newState = applyMovement(
+			const horizontalMove = applyHorizontalMovement(
 				currentState,
 				clampedInput,
 				clampedInput.cameraYaw,
+			);
+			const groundHeight = this.world.height(
+				horizontalMove.x,
+				horizontalMove.z,
+			);
+			const verticalMove = applyVerticalMovement(
+				currentState.y,
+				currentState.velocityY,
+				currentState.isGrounded,
+				groundHeight,
+				clampedInput,
+			);
+			let newState: MovementState = {
+				x: horizontalMove.x,
+				z: horizontalMove.z,
+				rotationY: horizontalMove.rotationY,
+				y: verticalMove.y,
+				velocityY: verticalMove.velocityY,
+				isGrounded: verticalMove.isGrounded,
+			};
+			const resolved = resolveTerrainCollision(
+				this.world,
+				{
+					x: player.x,
+					z: player.z,
+				},
+				{ x: newState.x, z: newState.z },
+				player.y,
+			);
+			newState.x = resolved.x;
+			newState.z = resolved.z;
+			newState.y = Math.max(
+				newState.y,
+				this.world.height(newState.x, newState.z),
 			);
 			const { x, z } = clampToRadius(
 				newState.x,
@@ -61,13 +103,13 @@ export class GameRoom extends Room {
 			);
 			newState.x = x;
 			newState.z = z;
-			player.y = this.world.height(newState.x, newState.z);
-			const allowed = true;
-			if (allowed) {
-				player.x = newState.x;
-				player.z = newState.z;
-				player.rotationY = newState.rotationY;
-			}
+			newState.y = Math.max(newState.y, this.world.height(x, z));
+			player.x = newState.x;
+			player.y = newState.y;
+			player.z = newState.z;
+			player.rotationY = newState.rotationY;
+			player.velocityY = newState.velocityY;
+			player.isGrounded = newState.isGrounded;
 			player.lastProcessedSeq = clampedInput.seq;
 		});
 	}
