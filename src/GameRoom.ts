@@ -11,14 +11,16 @@ import {
 	RAY_DIR_Z,
 	RAY_SPEED,
 	clampToRadius,
+	World,
 } from '../../shared-package';
-import { World } from '../../client/src/map/world';
 
 export class GameRoom extends Room {
 	private world!: World;
+
 	onCreate() {
 		this.state = new GameState();
-		this.world = new World(Math.floor(Math.random() * 1e9));
+		this.state.seed = Math.floor(Math.random() * 1e9);
+		this.world = new World(Math.floor(this.state.seed));
 		this.setSimulationInterval((dt) => {
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
 			this.state.rayZ += RAY_DIR_Z * RAY_SPEED * (dt / 1000);

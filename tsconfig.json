@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "../client/src/map"]
+  "include": ["src", "../client/src/map", "../shared-package/src/world/World.ts", "../shared-package/src/world/Noise.ts"]
 }
