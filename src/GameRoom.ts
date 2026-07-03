@@ -7,6 +7,8 @@ import {
 	RAY_SPEED,
 	MoveInput,
 	Player,
+	clampToRadius,
+	ACCESS_RADIUS,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 
@@ -30,24 +32,20 @@ export class GameRoom extends Room {
 				this.state.rayX,
 				this.state.rayZ,
 			);
-			// Le rayon avance en continu : re-clampe chaque joueur au disque
-			// accessible même s'il n'envoie pas d'input, sinon un joueur immobile
-			// que le bord rattrape sortirait dans les ténèbres au lieu d'être
-			// repoussé par la limite qui avance vers lui.
-			for (const player of this.state.players.values()) {
-				const { x, z } = clampToRadius(
-					player.x,
-					player.z,
-					this.state.rayX,
-					this.state.rayZ,
-					ACCESS_RADIUS,
-				);
-				if (x !== player.x || z !== player.z) {
-					player.x = x;
-					player.z = z;
-					player.y = this.world.height(x, z);
-				}
-			}
+			// for (const player of this.state.players.values()) {
+			// 	const { x, z } = clampToRadius(
+			// 		player.x,
+			// 		player.z,
+			// 		this.state.rayX,
+			// 		this.state.rayZ,
+			// 		ACCESS_RADIUS,
+			// 	);
+			// 	if (x !== player.x || z !== player.z) {
+			// 		player.x = x;
+			// 		player.z = z;
+			// 		player.y = this.world.height(x, z);
+			// 	}
+			// }
 		}, 1000 / 20);
 		this.onMessage('move', (client: Client, message: MoveInput) => {
 			this.inputValidator.validate(client, message);
