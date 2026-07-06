@@ -1,4 +1,4 @@
-import { Client, Room } from 'colyseus';
+import { Client, matchMaker, room, Room } from 'colyseus';
 import {
 	World,
 	GameState,
@@ -12,19 +12,27 @@ import {
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 
+interface GameRoomOptions {
+	roomName: string;
+}
+
 export class GameRoom extends Room {
 	private world!: World;
 	private inputValidator!: InputValidator;
 
-	constructor() {
-		super();
-		this.inputValidator = new InputValidator(this.world, this.state);
-	}
+	async onCreate(options: GameRoomOptions) {
+		const roomName = options?.roomName?.trim().toLowerCase();
 
-	onCreate() {
+		const existing = matchMaker.query({ name: 'game_room' });
+		const alreadyExists = await existing;
+		alreadyExists.find((r) => {
+			r.metadata?.roomName === roomName;
+		});
+		this.setMetadata({ roomName });
 		this.state = new GameState();
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
+		this.inputValidator = new InputValidator(this.world, this.state);
 		this.setSimulationInterval((dt) => {
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
 			this.state.rayZ += RAY_DIR_Z * RAY_SPEED * (dt / 1000);
