@@ -34,7 +34,7 @@ export class InputValidator {
 	}
 
 	update(client: Client, message: MoveInput) {
-		this.player = this.state.players.get(client.sessionId);
+		this.player = this.roomState.players.get(client.sessionId);
 		if (!this.player) return;
 
 		this.clampedInput = {
@@ -80,8 +80,8 @@ export class InputValidator {
 			this.clampedInput,
 		);
 		this.newState = {
-			x: this.horizontalMove.x,
-			z: this.horizontalMove.z,
+			x: this.resolved.x,
+			z: this.resolved.z,
 			rotationY: this.horizontalMove.rotationY,
 			y: this.verticalMove.y,
 			velocityY: this.verticalMove.velocityY,
@@ -90,7 +90,6 @@ export class InputValidator {
 	}
 
 	validate(client: Client, message: MoveInput) {
-		if (!this.player) return;
 		this.update(client, message);
 		this.player.animState = this.moving ? 'moving' : 'idle';
 
@@ -98,16 +97,16 @@ export class InputValidator {
 			this.newState.y,
 			this.world.height(this.newState.x, this.newState.z),
 		);
-		const { x, z } = clampToRadius(
-			this.newState.x,
-			this.newState.z,
-			this.roomState.rayX,
-			this.roomState.rayZ,
-			ACCESS_RADIUS,
-		);
-		this.newState.x = x;
-		this.newState.z = z;
-		this.newState.y = Math.max(this.newState.y, this.world.height(x, z));
+		// const { x, z } = clampToRadius(
+		// 	this.newState.x,
+		// 	this.newState.z,
+		// 	this.roomState.rayX,
+		// 	this.roomState.rayZ,
+		// 	ACCESS_RADIUS,
+		// );
+		// this.newState.x = x;
+		// this.newState.z = z;
+		// this.newState.y = Math.max(this.newState.y, this.world.height(x, z));
 		this.player.x = this.newState.x;
 		this.player.y = this.newState.y;
 		this.player.z = this.newState.z;
