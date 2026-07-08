@@ -6,17 +6,23 @@ import {
 	RAY_DIR_Z,
 	RAY_SPEED,
 	MoveInput,
+	AttackInput,
 	Player,
+	PLAYER_ATTACK_DAMAGE,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
+import { CombatManager } from './CombatManager';
+import { MonsterManager } from './MonsterManager';
 
 interface GameRoomOptions {
 	roomName: string;
 }
 
-export class GameRoom extends Room {
+export class GameRoom extends Room<{ state: GameState }> {
 	private world!: World;
 	private inputValidator!: InputValidator;
+	private combatManager!: CombatManager;
+	private monsterManager!: MonsterManager;
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
@@ -31,7 +37,10 @@ export class GameRoom extends Room {
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
+		this.combatManager = new CombatManager(this.state);
+		this.monsterManager = new MonsterManager(this.world, this.state);
 		this.setSimulationInterval((dt) => {
+			this.monsterManager.update(dt / 1000);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
 			this.state.rayZ += RAY_DIR_Z * RAY_SPEED * (dt / 1000);
 			this.state.rayY = this.world.height(
@@ -41,6 +50,14 @@ export class GameRoom extends Room {
 		}, 1000 / 20);
 		this.onMessage('move', (client: Client, message: MoveInput) => {
 			this.inputValidator.validate(client, message);
+		});
+		this.onMessage('attack', (client: Client, message: AttackInput) => {
+			if (typeof message?.monsterId !== 'string') return;
+			this.combatManager.damageMonster(
+				client,
+				message.monsterId,
+				PLAYER_ATTACK_DAMAGE,
+			);
 		});
 	}
 
