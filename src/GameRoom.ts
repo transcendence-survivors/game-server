@@ -23,11 +23,12 @@ export class GameRoom extends Room {
 
 		const existing = matchMaker.query({ name: 'game_room' });
 		const alreadyExists = await existing;
-		alreadyExists.find((r) => {
-			r.metadata?.roomName === roomName;
-		});
-		this.setMetadata({ roomName });
-		this.state = new GameState();
+		if (alreadyExists.find((r) => r.metadata?.roomName === roomName)) {
+			throw new Error('Room already exists');
+		}
+		await this.setMetadata({ roomName });
+		this.maxClients = 4;
+		this.state = new GameState() as GameState;
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
