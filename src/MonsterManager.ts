@@ -11,6 +11,8 @@ import {
 	splitStatBudget,
 	targetPopulation,
 	pickDistinct,
+	nearestIndex,
+	chaseStep,
 	MONSTER_KINDS,
 	BOSS_KINDS,
 	ACTIVE_MONSTER_KIND_COUNT,
@@ -18,7 +20,12 @@ import {
 	MONSTER_BOOST_INTERVAL_S,
 	MONSTER_SPAWN_MIN_DIST,
 	MONSTER_SPAWN_MAX_DIST,
+	MONSTER_MOVE_SPEED,
+	MONSTER_ATTACK_RANGE,
+	BOSS_ATTACK_RANGE,
+	MONSTER_ATTACK_COOLDOWN_S,
 } from '../../shared-package';
+import { CombatManager } from './CombatManager';
 
 /**
  * Server-authoritative monster director.
@@ -31,10 +38,14 @@ import {
  * monster (HP, damage, XP grow with elapsed time, kind multipliers applied
  * on top, bosses scaled by BOSS_STAT_SCALE) and spawns regular monsters up
  * to a population that grows with elapsed time.
+ *
+ * Every tick: each monster chases the closest living player and, once in
+ * range, strikes it on a cooldown through the CombatManager.
  */
 export class MonsterManager {
 	private world!: World;
 	private roomState!: GameState;
+	private combat!: CombatManager;
 	private random!: () => number;
 	private elapsedS = 0;
 	private sinceRotationS = 0;
@@ -48,10 +59,12 @@ export class MonsterManager {
 	constructor(
 		world: World,
 		roomState: GameState,
+		combat: CombatManager,
 		random: () => number = Math.random,
 	) {
 		this.world = world;
 		this.roomState = roomState;
+		this.combat = combat;
 		this.random = random;
 		this.rotate();
 	}
@@ -72,6 +85,7 @@ export class MonsterManager {
 			this.boostAll();
 			this.fillPopulation();
 		}
+		this.stepAll(dtSeconds);
 	}
 
 	getActiveKinds(): readonly MonsterKind[] {
@@ -146,6 +160,51 @@ export class MonsterManager {
 
 	private spawnBoss() {
 		this.spawn(this.bossKind, true, this.bossMultipliers);
+	}
+
+	/**
+	 * Chases the closest living player with every monster and strikes it
+	 * once in range, at most every MONSTER_ATTACK_COOLDOWN_S.
+	 */
+	private stepAll(dtSeconds: number) {
+		const sessionIds: string[] = [];
+		const targets: Player[] = [];
+		this.roomState.players.forEach((player, sessionId) => {
+			if (player.life.isDepleted()) return;
+			sessionIds.push(sessionId);
+			targets.push(player);
+		});
+		this.roomState.monsters.forEach((monster) => {
+			monster.attackCooldownS = Math.max(
+				0,
+				monster.attackCooldownS - dtSeconds,
+			);
+			const index = nearestIndex(monster, targets);
+			if (index < 0) {
+				monster.animState = 'idle';
+				return;
+			}
+			const step = chaseStep(
+				monster,
+				targets[index],
+				MONSTER_MOVE_SPEED,
+				dtSeconds,
+				monster.isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE,
+			);
+			monster.rotationY = step.rotationY;
+			if (step.inRange) {
+				monster.animState = 'attack';
+				if (monster.attackCooldownS === 0) {
+					this.combat.damagePlayer(sessionIds[index], monster.damage);
+					monster.attackCooldownS = MONSTER_ATTACK_COOLDOWN_S;
+				}
+				return;
+			}
+			monster.x = step.x;
+			monster.z = step.z;
+			monster.y = this.world.height(monster.x, monster.z);
+			monster.animState = 'walk';
+		});
 	}
 
 	private spawn(kind: string, isBoss: boolean, multipliers: StatMultipliers) {

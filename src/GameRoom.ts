@@ -38,7 +38,11 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
 		this.combatManager = new CombatManager(this.state);
-		this.monsterManager = new MonsterManager(this.world, this.state);
+		this.monsterManager = new MonsterManager(
+			this.world,
+			this.state,
+			this.combatManager,
+		);
 		this.setSimulationInterval((dt) => {
 			this.monsterManager.update(dt / 1000);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
