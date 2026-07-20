@@ -9,6 +9,8 @@ import {
 	AttackInput,
 	Player,
 	PLAYER_ATTACK_DAMAGE,
+	ACCESS_RADIUS,
+	findSpawnPoint,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
@@ -67,7 +69,25 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onJoin(client: Client) {
-		this.state.players.set(client.sessionId, new Player());
+		// Le joueur doit apparaître sur une zone dégagée du rayon d'accès
+		// (autour du faisceau) et jamais enterré dans un mur. On disperse
+		// légèrement les joueurs pour qu'ils ne se superposent pas au spawn.
+		const index = this.state.players.size; // 0..3
+		const spread = index === 0 ? 0 : this.world.CELL * 2;
+		const angle = index * (Math.PI / 2);
+		const spawn = findSpawnPoint(
+			this.world,
+			this.state.rayX + Math.cos(angle) * spread,
+			this.state.rayZ + Math.sin(angle) * spread,
+			this.state.rayX,
+			this.state.rayZ,
+			ACCESS_RADIUS,
+		);
+		const player = new Player();
+		player.x = spawn.x;
+		player.y = spawn.y;
+		player.z = spawn.z;
+		this.state.players.set(client.sessionId, player);
 		client.send('worldSeed', { seed: this.world.seed });
 	}
 
