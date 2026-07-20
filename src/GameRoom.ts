@@ -15,6 +15,7 @@ import {
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
 import { MonsterManager } from './MonsterManager';
+import { AuraManager } from './AuraManager';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -25,6 +26,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private inputValidator!: InputValidator;
 	private combatManager!: CombatManager;
 	private monsterManager!: MonsterManager;
+	private auraManager!: AuraManager;
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
@@ -46,8 +48,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.state,
 			this.combatManager,
 		);
+		this.auraManager = new AuraManager(this.state, this.combatManager);
 		this.setSimulationInterval((dt) => {
 			this.monsterManager.update(dt / 1000);
+			this.auraManager.update(dt / 1000);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
 			this.state.rayZ += RAY_DIR_Z * RAY_SPEED * (dt / 1000);
 			this.state.rayY = this.world.height(
