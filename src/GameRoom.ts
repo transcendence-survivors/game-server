@@ -30,7 +30,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
-
+		console.log(`Creating game room with name: ${roomName}`);
 		const existing = matchMaker.query({ name: 'game_room' });
 		const alreadyExists = await existing;
 		if (alreadyExists.find((r) => r.metadata?.roomName === roomName)) {
@@ -77,6 +77,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onJoin(client: Client) {
+		console.log(`Client ${client.sessionId} `);
+
 		// Le joueur doit apparaître sur une zone dégagée du rayon d'accès
 		// (autour du faisceau) et jamais enterré dans un mur. On disperse
 		// légèrement les joueurs pour qu'ils ne se superposent pas au spawn.
