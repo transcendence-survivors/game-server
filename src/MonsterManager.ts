@@ -27,21 +27,6 @@ import {
 } from '../../shared-package';
 import { CombatManager } from './CombatManager';
 
-/**
- * Server-authoritative monster director.
- *
- * Every rotation (2 min): draws the 3 monster kinds allowed to spawn,
- * re-rolls their 500% HP/damage budget, draws the next boss with its own
- * budget and spawns it.
- *
- * Every boost tick (5 s): re-applies the difficulty curve to every living
- * monster (HP, damage, XP grow with elapsed time, kind multipliers applied
- * on top, bosses scaled by BOSS_STAT_SCALE) and spawns regular monsters up
- * to a population that grows with elapsed time.
- *
- * Every tick: each monster chases the closest living player and, once in
- * range, strikes it on a cooldown through the CombatManager.
- */
 export class MonsterManager {
 	private world!: World;
 	private roomState!: GameState;
@@ -69,7 +54,6 @@ export class MonsterManager {
 		this.rotate();
 	}
 
-	/** Advances the director; call it from the room simulation loop. */
 	update(dtSeconds: number) {
 		if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
 		this.elapsedS += dtSeconds;
@@ -96,11 +80,6 @@ export class MonsterManager {
 		return this.bossKind;
 	}
 
-	/**
-	 * Draws the 3 kinds allowed to spawn and the next boss, each with a
-	 * fresh split of the 500% stat budget. Living monsters of a re-drawn
-	 * kind adopt the new multipliers; the others keep their previous ones.
-	 */
 	private rotate() {
 		this.activeKinds = pickDistinct(
 			MONSTER_KINDS,
@@ -124,7 +103,6 @@ export class MonsterManager {
 		});
 	}
 
-	/** Re-applies the difficulty curve to every living monster. */
 	private boostAll() {
 		this.roomState.monsters.forEach((monster) => {
 			const stats = computeMonsterStats(
@@ -141,7 +119,6 @@ export class MonsterManager {
 		});
 	}
 
-	/** Spawns regular monsters until the time-based population is reached. */
 	private fillPopulation() {
 		if (this.activeKinds.length === 0) return;
 		let alive = 0;
@@ -162,10 +139,6 @@ export class MonsterManager {
 		this.spawn(this.bossKind, true, this.bossMultipliers);
 	}
 
-	/**
-	 * Chases the closest living player with every monster and strikes it
-	 * once in range, at most every MONSTER_ATTACK_COOLDOWN_S.
-	 */
 	private stepAll(dtSeconds: number) {
 		const sessionIds: string[] = [];
 		const targets: Player[] = [];
@@ -208,6 +181,7 @@ export class MonsterManager {
 	}
 
 	private spawn(kind: string, isBoss: boolean, multipliers: StatMultipliers) {
+		isBoss = false; // TODO
 		const anchor = this.pickAnchorPlayer();
 		if (!anchor) return;
 		const angle = this.random() * 2 * Math.PI;
@@ -230,7 +204,6 @@ export class MonsterManager {
 		this.roomState.monsters.set(`monster_${this.nextMonsterId++}`, monster);
 	}
 
-	/** Monsters spawn around a random player; no player, no spawn. */
 	private pickAnchorPlayer(): Player | undefined {
 		const players: Player[] = [];
 		this.roomState.players.forEach((player) => players.push(player));

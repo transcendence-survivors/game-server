@@ -53,6 +53,10 @@ export class CombatManager {
 			}
 		}
 		this.roomState.monsters.delete(monsterId);
+		player.stats.killAmount++;
+		player.life.heal(
+			(player.stats.attackDamage / 100) * player.stats.lifesteal,
+		);
 	}
 
 	drainDamageEvents(): MonsterDamageEvent[] {
