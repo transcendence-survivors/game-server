@@ -1,4 +1,4 @@
-import { Client, matchMaker, room, Room } from 'colyseus';
+import { Client, matchMaker, Room } from 'colyseus';
 import {
 	World,
 	GameState,
@@ -11,11 +11,13 @@ import {
 	PLAYER_ATTACK_DAMAGE,
 	ACCESS_RADIUS,
 	findSpawnPoint,
+	rollUpgradeOptions,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
 import { MonsterManager } from './MonsterManager';
 import { AuraManager } from './AuraManager';
+import { UPGRADE_POOL } from '../../shared-package/src/utils/Upgrades';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -27,6 +29,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private combatManager!: CombatManager;
 	private monsterManager!: MonsterManager;
 	private auraManager!: AuraManager;
+	private pendingOffers: Map<string, string[]> = new Map();
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
@@ -42,7 +45,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
-		this.combatManager = new CombatManager(this.state);
+		this.combatManager = new CombatManager(this.state, this.clients);
 		this.monsterManager = new MonsterManager(
 			this.world,
 			this.state,
@@ -52,8 +55,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.setSimulationInterval((dt) => {
 			this.monsterManager.update(dt / 1000);
 			this.auraManager.update(dt / 1000);
-			// Diffuse les dégâts encaissés par les monstres ce tick (aura +
-			// attaques) pour les nombres flottants côté client.
 			const damage = this.combatManager.drainDamageEvents();
 			if (damage.length) this.broadcast('monsterDamage', damage);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
@@ -74,14 +75,51 @@ export class GameRoom extends Room<{ state: GameState }> {
 				PLAYER_ATTACK_DAMAGE,
 			);
 		});
+		this.onMessage('requestUpgradeOptions', (client) => {
+			const player = this.state.players.get(client.sessionId);
+			if (!player) return;
+
+			const options = rollUpgradeOptions(player, 3);
+			this.pendingOffers.set(
+				client.sessionId,
+				options.map((o) => o.id),
+			);
+
+			client.send(
+				'upgradeOptions',
+				options.map((o) => ({
+					id: o.id,
+					name: o.name,
+					description: o.description,
+				})),
+			);
+		});
+
+		this.onMessage('selectUpgrade', (client, message: { id: string }) => {
+			const player = this.state.players.get(client.sessionId);
+			if (!player) return;
+
+			const offered = this.pendingOffers.get(client.sessionId);
+			if (!offered || !offered.includes(message.id)) {
+				console.warn(
+					`${client.sessionId} tried to select invalid upgrade: ${message.id}`,
+				);
+				return;
+			}
+			const upgrade = UPGRADE_POOL.find((u) => u.id === message.id);
+			if (!upgrade) return;
+			upgrade.apply(player);
+			this.pendingOffers.delete(client.sessionId);
+		});
+	}
+
+	onPlayerLevelUp(client: Client) {
+		client.send('levelUp');
 	}
 
 	onJoin(client: Client) {
 		console.log(`Client ${client.sessionId} `);
 
-		// Le joueur doit apparaître sur une zone dégagée du rayon d'accès
-		// (autour du faisceau) et jamais enterré dans un mur. On disperse
-		// légèrement les joueurs pour qu'ils ne se superposent pas au spawn.
 		const index = this.state.players.size; // 0..3
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);

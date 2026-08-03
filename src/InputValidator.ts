@@ -8,9 +8,7 @@ import {
 	applyVerticalMovement,
 	HorizontalMove,
 	VerticalMove,
-	clampToRadius,
 	resolveTerrainCollision,
-	ACCESS_RADIUS,
 } from '../../shared-package/';
 
 export class InputValidator {
@@ -58,6 +56,7 @@ export class InputValidator {
 			this.currentState,
 			this.clampedInput,
 			this.clampedInput.cameraYaw,
+			this.player.stats.moveSpeed,
 		);
 		this.resolved = resolveTerrainCollision(
 			this.world,
@@ -97,16 +96,6 @@ export class InputValidator {
 			this.newState.y,
 			this.world.height(this.newState.x, this.newState.z),
 		);
-		// const { x, z } = clampToRadius(
-		// 	this.newState.x,
-		// 	this.newState.z,
-		// 	this.roomState.rayX,
-		// 	this.roomState.rayZ,
-		// 	ACCESS_RADIUS,
-		// );
-		// this.newState.x = x;
-		// this.newState.z = z;
-		// this.newState.y = Math.max(this.newState.y, this.world.height(x, z));
 		this.player.x = this.newState.x;
 		this.player.y = this.newState.y;
 		this.player.z = this.newState.z;
