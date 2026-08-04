@@ -12,6 +12,7 @@ import {
 	ACCESS_RADIUS,
 	findSpawnPoint,
 	rollUpgradeOptions,
+	isInsideRay,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
@@ -63,6 +64,14 @@ export class GameRoom extends Room<{ state: GameState }> {
 				this.state.rayX,
 				this.state.rayZ,
 			);
+			this.state.players.forEach((player, sessionId) => {
+				const client = this.clients.find(
+					(c) => c.sessionId === sessionId,
+				);
+				if (client && player.life.isDepleted()) {
+					client.send('gameOver');
+				}
+			});
 		}, 1000 / 20);
 		this.onMessage('move', (client: Client, message: MoveInput) => {
 			this.inputValidator.validate(client, message);
@@ -91,6 +100,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 					id: o.id,
 					name: o.name,
 					description: o.description,
+					iconUrl: o.iconUrl,
 				})),
 			);
 		});

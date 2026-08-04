@@ -11,8 +11,6 @@ matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 		'Origin, X-Requested-With, Content-Type, Accept, Authorization',
 });
 
-const transport = new BunWebSockets();
-
 const gameServer = new Server({ transport: new BunWebSockets() });
 
 gameServer.define('game_room', GameRoom).filterBy(['roomName']);

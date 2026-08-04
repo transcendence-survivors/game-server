@@ -14,7 +14,8 @@ export class CombatManager {
 	damagePlayer(sessionId: string, amount: number) {
 		const player = this.roomState.players.get(sessionId);
 		if (!player) return;
-		player.life.takeDamage(amount);
+		const reducedAmount = amount * (100 / (100 + player.stats.armor));
+		player.life.takeDamage(reducedAmount);
 	}
 
 	damageMonster(attacker: Client, monsterId: string, amount: number) {
