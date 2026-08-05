@@ -1,5 +1,9 @@
 import { Client, ClientArray, Room } from 'colyseus';
-import { GameState, MonsterDamageEvent } from '../../shared-package';
+import {
+	GameState,
+	MonsterDamageEvent,
+	ServerMessage,
+} from '../../shared-package';
 
 export class CombatManager {
 	private roomState!: GameState;
@@ -50,7 +54,7 @@ export class CombatManager {
 			const client = this.clients.getById(sessionId);
 			if (!client) return;
 			for (let i = 0; i < levelsGained; i++) {
-				client.send('levelUp');
+				client.send(ServerMessage.LevelUp);
 			}
 		}
 		this.roomState.monsters.delete(monsterId);

@@ -13,6 +13,10 @@ import {
 	findSpawnPoint,
 	rollUpgradeOptions,
 	isInsideRay,
+	ClientMessage,
+	ServerMessage,
+	WeaponState,
+	type SelectUpgradeInput,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
@@ -57,7 +61,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.monsterManager.update(dt / 1000);
 			this.auraManager.update(dt / 1000);
 			const damage = this.combatManager.drainDamageEvents();
-			if (damage.length) this.broadcast('monsterDamage', damage);
+			if (damage.length)
+				this.broadcast(ServerMessage.MonsterDamage, damage);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
 			this.state.rayZ += RAY_DIR_Z * RAY_SPEED * (dt / 1000);
 			this.state.rayY = this.world.height(
@@ -69,22 +74,30 @@ export class GameRoom extends Room<{ state: GameState }> {
 					(c) => c.sessionId === sessionId,
 				);
 				if (client && player.life.isDepleted()) {
-					client.send('gameOver');
+					client.send(ServerMessage.GameOver, {
+						playerId: sessionId,
+					});
 				}
 			});
 		}, 1000 / 20);
-		this.onMessage('move', (client: Client, message: MoveInput) => {
-			this.inputValidator.validate(client, message);
-		});
-		this.onMessage('attack', (client: Client, message: AttackInput) => {
-			if (typeof message?.monsterId !== 'string') return;
-			this.combatManager.damageMonster(
-				client,
-				message.monsterId,
-				PLAYER_ATTACK_DAMAGE,
-			);
-		});
-		this.onMessage('requestUpgradeOptions', (client) => {
+		this.onMessage(
+			ClientMessage.Move,
+			(client: Client, message: MoveInput) => {
+				this.inputValidator.validate(client, message);
+			},
+		);
+		this.onMessage(
+			ClientMessage.Attack,
+			(client: Client, message: AttackInput) => {
+				if (typeof message?.monsterId !== 'string') return;
+				this.combatManager.damageMonster(
+					client,
+					message.monsterId,
+					PLAYER_ATTACK_DAMAGE,
+				);
+			},
+		);
+		this.onMessage(ClientMessage.RequestUpgradeOptions, (client) => {
 			const player = this.state.players.get(client.sessionId);
 			if (!player) return;
 
@@ -95,7 +108,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			);
 
 			client.send(
-				'upgradeOptions',
+				ServerMessage.UpgradeOptions,
 				options.map((o) => ({
 					id: o.id,
 					name: o.name,
@@ -105,26 +118,29 @@ export class GameRoom extends Room<{ state: GameState }> {
 			);
 		});
 
-		this.onMessage('selectUpgrade', (client, message: { id: string }) => {
-			const player = this.state.players.get(client.sessionId);
-			if (!player) return;
+		this.onMessage(
+			ClientMessage.SelectUpgrade,
+			(client, message: SelectUpgradeInput) => {
+				const player = this.state.players.get(client.sessionId);
+				if (!player) return;
 
-			const offered = this.pendingOffers.get(client.sessionId);
-			if (!offered || !offered.includes(message.id)) {
-				console.warn(
-					`${client.sessionId} tried to select invalid upgrade: ${message.id}`,
-				);
-				return;
-			}
-			const upgrade = UPGRADE_POOL.find((u) => u.id === message.id);
-			if (!upgrade) return;
-			upgrade.apply(player);
-			this.pendingOffers.delete(client.sessionId);
-		});
+				const offered = this.pendingOffers.get(client.sessionId);
+				if (!offered || !offered.includes(message.id)) {
+					console.warn(
+						`${client.sessionId} tried to select invalid upgrade: ${message.id}`,
+					);
+					return;
+				}
+				const upgrade = UPGRADE_POOL.find((u) => u.id === message.id);
+				if (!upgrade) return;
+				upgrade.apply(player);
+				this.pendingOffers.delete(client.sessionId);
+			},
+		);
 	}
 
 	onPlayerLevelUp(client: Client) {
-		client.send('levelUp');
+		client.send(ServerMessage.LevelUp);
 	}
 
 	onJoin(client: Client) {
@@ -142,11 +158,14 @@ export class GameRoom extends Room<{ state: GameState }> {
 			ACCESS_RADIUS,
 		);
 		const player = new Player();
+		const aura = new WeaponState();
+		aura.kind = 'aura';
+		player.weapons.set(aura.kind, aura);
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
-		client.send('worldSeed', { seed: this.world.seed });
+		client.send(ServerMessage.WorldSeed, { seed: this.world.seed });
 	}
 
 	onLeave(client: Client) {
