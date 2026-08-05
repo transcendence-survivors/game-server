@@ -181,7 +181,6 @@ export class MonsterManager {
 	}
 
 	private spawn(kind: string, isBoss: boolean, multipliers: StatMultipliers) {
-		isBoss = false; // TODO
 		const anchor = this.pickAnchorPlayer();
 		if (!anchor) return;
 		const angle = this.random() * 2 * Math.PI;

@@ -65,9 +65,22 @@ export class GameRoom extends Room<{ state: GameState }> {
 				this.state.rayZ,
 			);
 			this.state.players.forEach((player, sessionId) => {
+				player.insideRay = isInsideRay(
+					player.x,
+					player.z,
+					{
+						x: this.state.rayX,
+						z: this.state.rayZ,
+					},
+					ACCESS_RADIUS,
+				);
+
 				const client = this.clients.find(
 					(c) => c.sessionId === sessionId,
 				);
+				if (client && !player.insideRay) {
+					player.life.takeDamage((player.life.max / 100) * 0.5);
+				}
 				if (client && player.life.isDepleted()) {
 					client.send('gameOver');
 				}

@@ -40,9 +40,12 @@ export class CombatManager {
 			isBoss: monster.isBoss,
 			fatal,
 		});
-		if (!fatal) return;
 		const player = this.roomState.players.get(sessionId);
 		if (!player) return;
+		player.life.heal(
+			(player.stats.attackDamage / 100) * player.stats.lifesteal,
+		);
+		if (!fatal) return;
 		const previousLevel = player.experience.level;
 		player.experience.gain(monster.xpReward);
 		if (player.experience.level > previousLevel) {
@@ -55,9 +58,6 @@ export class CombatManager {
 		}
 		this.roomState.monsters.delete(monsterId);
 		player.stats.killAmount++;
-		player.life.heal(
-			(player.stats.attackDamage / 100) * player.stats.lifesteal,
-		);
 	}
 
 	drainDamageEvents(): MonsterDamageEvent[] {
