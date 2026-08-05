@@ -17,6 +17,7 @@ import {
 	ServerMessage,
 	WeaponState,
 	type SelectUpgradeInput,
+	weaponConfigRegistry,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { CombatManager } from './CombatManager';
@@ -159,7 +160,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		);
 		const player = new Player();
 		const aura = new WeaponState();
-		aura.kind = 'aura';
+		aura.kind = weaponConfigRegistry.get('aura').kind;
 		player.weapons.set(aura.kind, aura);
 		player.x = spawn.x;
 		player.y = spawn.y;
