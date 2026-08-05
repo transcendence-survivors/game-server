@@ -10,6 +10,7 @@ import {
 	VerticalMove,
 	resolveTerrainCollision,
 } from '../../shared-package/';
+import { groundHeightUnderHitbox } from '../../shared-package/src/gameplay/Collisions';
 
 export class InputValidator {
 	private player!: any;
@@ -58,18 +59,10 @@ export class InputValidator {
 			this.clampedInput.cameraYaw,
 			this.player.stats.moveSpeed,
 		);
-		this.resolved = resolveTerrainCollision(
+		const groundHeight = groundHeightUnderHitbox(
 			this.world,
-			{
-				x: this.player.x,
-				z: this.player.z,
-			},
-			{ x: this.horizontalMove.x, z: this.horizontalMove.z },
-			this.player.y,
-		);
-		const groundHeight = this.world.height(
-			this.resolved.x,
-			this.resolved.z,
+			this.player.x,
+			this.player.z,
 		);
 		this.verticalMove = applyVerticalMovement(
 			this.currentState.y,
@@ -78,6 +71,25 @@ export class InputValidator {
 			groundHeight,
 			this.clampedInput,
 		);
+		this.resolved = resolveTerrainCollision(
+			this.world,
+			{
+				x: this.player.x,
+				z: this.player.z,
+			},
+			{ x: this.horizontalMove.x, z: this.horizontalMove.z },
+			this.verticalMove.y,
+		);
+		const finalGroundHeight = groundHeightUnderHitbox(
+			this.world,
+			this.resolved.x,
+			this.resolved.z,
+		);
+		if (this.verticalMove.y <= finalGroundHeight) {
+			this.verticalMove.y = finalGroundHeight;
+			this.verticalMove.velocityY = 0;
+			this.verticalMove.isGrounded = true;
+		}
 		this.newState = {
 			x: this.resolved.x,
 			z: this.resolved.z,
@@ -94,7 +106,11 @@ export class InputValidator {
 
 		this.newState.y = Math.max(
 			this.newState.y,
-			this.world.height(this.newState.x, this.newState.z),
+			groundHeightUnderHitbox(
+				this.world,
+				this.newState.x,
+				this.newState.z,
+			),
 		);
 		this.player.x = this.newState.x;
 		this.player.y = this.newState.y;
