@@ -19,6 +19,7 @@ import {
 	type SelectUpgradeInput,
 	weaponConfigRegistry,
 	type AuraWeaponConfig,
+	type SwordWeaponConfig,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { MonsterManager } from './MonsterManager';
@@ -29,6 +30,7 @@ import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { WeaponFactory } from './combat/WeaponFactory';
 import { AuraWeapon } from './combat/AuraWeapon';
+import { SwordWeapon } from './combat/SwordWeapon';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -80,10 +82,20 @@ export class GameRoom extends Room<{ state: GameState }> {
 					config as Readonly<AuraWeaponConfig>,
 				),
 		);
+		weaponFactory.register(
+			'sword',
+			(ownerSessionId, state, config) =>
+				new SwordWeapon(
+					ownerSessionId,
+					state,
+					config as Readonly<SwordWeaponConfig>,
+				),
+		);
 		this.combatSystem = new CombatSystem(
 			this.state,
 			this.damageResolver,
 			weaponFactory,
+			this.combatEntitySystem,
 		);
 		this.setSimulationInterval((dt) => {
 			this.monsterManager.update(dt / 1000);
@@ -194,6 +206,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const aura = new WeaponState();
 		aura.kind = weaponConfigRegistry.get('aura').kind;
 		player.weapons.set(aura.kind, aura);
+		const sword = new WeaponState();
+		sword.kind = weaponConfigRegistry.get('sword').kind;
+		player.weapons.set(sword.kind, sword);
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;

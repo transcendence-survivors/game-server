@@ -6,10 +6,12 @@ import {
 	type WeaponState,
 } from '../../../shared-package';
 import type { DamageResolver } from './DamageResolver';
+import type { CombatEntitySystem } from './CombatEntitySystem';
 
 export interface WeaponAttackContext {
 	roomState: GameState;
 	damage: DamageResolver;
+	entities: CombatEntitySystem;
 	elapsedS: number;
 }
 

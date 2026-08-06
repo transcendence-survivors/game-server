@@ -2,6 +2,7 @@ import type { GameState } from '../../../shared-package';
 import type { DamageResolver } from './DamageResolver';
 import { PlayerLoadout } from './PlayerLoadout';
 import type { WeaponFactory } from './WeaponFactory';
+import type { CombatEntitySystem } from './CombatEntitySystem';
 
 export class CombatSystem {
 	private readonly loadouts = new Map<string, PlayerLoadout>();
@@ -11,6 +12,7 @@ export class CombatSystem {
 		private readonly roomState: GameState,
 		private readonly damage: DamageResolver,
 		private readonly factory: WeaponFactory,
+		private readonly entities: CombatEntitySystem,
 	) {}
 
 	update(dtSeconds: number): void {
@@ -29,6 +31,7 @@ export class CombatSystem {
 				weapon.update(dtSeconds, player, {
 					roomState: this.roomState,
 					damage: this.damage,
+					entities: this.entities,
 					elapsedS: this.elapsedS,
 				});
 			}

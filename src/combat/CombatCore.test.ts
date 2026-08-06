@@ -13,6 +13,7 @@ import { DamageResolver } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 import { WeaponFactory } from './WeaponFactory';
+import { CombatEntitySystem } from './CombatEntitySystem';
 
 function createDamageResolver(state: GameState): DamageResolver {
 	const clients = { getById: () => undefined } as unknown as ClientArray;
@@ -28,6 +29,10 @@ function createCombatState(monsterLife: number = 50) {
 	state.players.set('player', player);
 	state.monsters.set('monster', monster);
 	return { state, player, monster };
+}
+
+function createEntities(state: GameState, damage: DamageResolver) {
+	return new CombatEntitySystem(state, damage, () => 0);
 }
 
 class TestAuraWeapon extends Weapon<AuraWeaponConfig> {
@@ -93,7 +98,12 @@ describe('Weapon', () => {
 			weaponState,
 			weaponConfigRegistry.get('aura'),
 		);
-		const context = { roomState: state, damage, elapsedS: 0 };
+		const context = {
+			roomState: state,
+			damage,
+			entities: createEntities(state, damage),
+			elapsedS: 0,
+		};
 		weapon.update(0.5, player, context);
 		expect(weapon.attackCount).toBe(0);
 		weapon.update(0.5, player, context);
@@ -112,12 +122,19 @@ describe('Weapon', () => {
 			weaponConfigRegistry.get('aura'),
 		);
 		weapon.attackResult = false;
-		weapon.update(1, player, { roomState: state, damage, elapsedS: 1 });
+		const entities = createEntities(state, damage);
+		weapon.update(1, player, {
+			roomState: state,
+			damage,
+			entities,
+			elapsedS: 1,
+		});
 		expect(weaponState.activationSequence).toBe(0);
 		weapon.attackResult = true;
 		weapon.update(0.01, player, {
 			roomState: state,
 			damage,
+			entities,
 			elapsedS: 1.01,
 		});
 		expect(weaponState.activationSequence).toBe(1);
