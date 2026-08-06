@@ -54,6 +54,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		);
 		this.auraManager = new AuraManager(this.state, this.combatManager);
 		this.setSimulationInterval((dt) => {
+			if (!this.state.started) return;
 			this.monsterManager.update(dt / 1000);
 			this.auraManager.update(dt / 1000);
 			const damage = this.combatManager.drainDamageEvents();
@@ -134,6 +135,23 @@ export class GameRoom extends Room<{ state: GameState }> {
 			upgrade.apply(player);
 			this.pendingOffers.delete(client.sessionId);
 		});
+
+		this.onMessage('ready', (client: Client, ready: boolean) => {
+			const player = this.state.players.get(client.sessionId);
+			if (!player) return;
+			player.ready = ready;
+
+			if (this.state.started) return;
+
+			const players = [...this.state.players.values()];
+			const allReady =
+				players.length > 0 && players.every((p) => p.ready);
+			if (allReady) {
+				this.state.started = true;
+				this.lock();
+				this.broadcast('gameStart');
+			}
+		});
 	}
 
 	onPlayerLevelUp(client: Client) {
@@ -164,6 +182,16 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	onLeave(client: Client) {
 		this.state.players.delete(client.sessionId);
+
+		// TODO double code
+		if (this.state.started) return;
+		const players = [...this.state.players.values()];
+		const allReady = players.length > 0 && players.every((p) => p.ready);
+		if (allReady) {
+			this.state.started = true;
+			this.lock();
+			this.broadcast('game_start');
+		}
 	}
 
 	onDispose() {}
