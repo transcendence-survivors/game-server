@@ -25,12 +25,12 @@ import {
 	BOSS_ATTACK_RANGE,
 	MONSTER_ATTACK_COOLDOWN_S,
 } from '../../shared-package';
-import { CombatManager } from './CombatManager';
+import { DamageResolver } from './combat/DamageResolver';
 
 export class MonsterManager {
 	private world!: World;
 	private roomState!: GameState;
-	private combat!: CombatManager;
+	private damage!: DamageResolver;
 	private random!: () => number;
 	private elapsedS = 0;
 	private sinceRotationS = 0;
@@ -44,12 +44,12 @@ export class MonsterManager {
 	constructor(
 		world: World,
 		roomState: GameState,
-		combat: CombatManager,
+		damage: DamageResolver,
 		random: () => number = Math.random,
 	) {
 		this.world = world;
 		this.roomState = roomState;
-		this.combat = combat;
+		this.damage = damage;
 		this.random = random;
 		this.rotate();
 	}
@@ -168,7 +168,7 @@ export class MonsterManager {
 			if (step.inRange) {
 				monster.animState = 'attack';
 				if (monster.attackCooldownS === 0) {
-					this.combat.damagePlayer(sessionIds[index], monster.damage);
+					this.damage.damagePlayer(sessionIds[index], monster.damage);
 					monster.attackCooldownS = MONSTER_ATTACK_COOLDOWN_S;
 				}
 				return;

@@ -7,6 +7,7 @@
 		"start": "bun src/index.ts",
 		"dev": "bun --watch src/index.ts",
 		"build": "bun build src/index.ts --target=bun --outdir=dist",
+		"test": "bun test",
 		"typecheck": "tsc --noEmit",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."

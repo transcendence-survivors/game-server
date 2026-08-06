@@ -18,12 +18,17 @@ import {
 	WeaponState,
 	type SelectUpgradeInput,
 	weaponConfigRegistry,
+	type AuraWeaponConfig,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
-import { CombatManager } from './CombatManager';
 import { MonsterManager } from './MonsterManager';
-import { AuraManager } from './AuraManager';
 import { UPGRADE_POOL } from '../../shared-package/src/utils/Upgrades';
+import { DamageResolver } from './combat/DamageResolver';
+import { KillRewardSystem } from './combat/KillRewardSystem';
+import { CombatEntitySystem } from './combat/CombatEntitySystem';
+import { CombatSystem } from './combat/CombatSystem';
+import { WeaponFactory } from './combat/WeaponFactory';
+import { AuraWeapon } from './combat/AuraWeapon';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -32,10 +37,12 @@ interface GameRoomOptions {
 export class GameRoom extends Room<{ state: GameState }> {
 	private world!: World;
 	private inputValidator!: InputValidator;
-	private combatManager!: CombatManager;
+	private damageResolver!: DamageResolver;
 	private monsterManager!: MonsterManager;
-	private auraManager!: AuraManager;
+	private combatSystem!: CombatSystem;
+	private combatEntitySystem!: CombatEntitySystem;
 	private pendingOffers: Map<string, string[]> = new Map();
+	private legacyAttackSequence = 0;
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
@@ -51,17 +58,38 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
-		this.combatManager = new CombatManager(this.state, this.clients);
+		const killRewards = new KillRewardSystem(this.state, this.clients);
+		this.damageResolver = new DamageResolver(this.state, killRewards);
 		this.monsterManager = new MonsterManager(
 			this.world,
 			this.state,
-			this.combatManager,
+			this.damageResolver,
 		);
-		this.auraManager = new AuraManager(this.state, this.combatManager);
+		this.combatEntitySystem = new CombatEntitySystem(
+			this.state,
+			this.damageResolver,
+			(x, z) => this.world.height(x, z),
+		);
+		const weaponFactory = new WeaponFactory(weaponConfigRegistry);
+		weaponFactory.register(
+			'aura',
+			(ownerSessionId, state, config) =>
+				new AuraWeapon(
+					ownerSessionId,
+					state,
+					config as Readonly<AuraWeaponConfig>,
+				),
+		);
+		this.combatSystem = new CombatSystem(
+			this.state,
+			this.damageResolver,
+			weaponFactory,
+		);
 		this.setSimulationInterval((dt) => {
 			this.monsterManager.update(dt / 1000);
-			this.auraManager.update(dt / 1000);
-			const damage = this.combatManager.drainDamageEvents();
+			this.combatSystem.update(dt / 1000);
+			this.combatEntitySystem.update(dt / 1000);
+			const damage = this.damageResolver.drainImpactEvents();
 			if (damage.length)
 				this.broadcast(ServerMessage.MonsterDamage, damage);
 			this.state.rayX += RAY_DIR_X * RAY_SPEED * (dt / 1000);
@@ -91,8 +119,12 @@ export class GameRoom extends Room<{ state: GameState }> {
 			ClientMessage.Attack,
 			(client: Client, message: AttackInput) => {
 				if (typeof message?.monsterId !== 'string') return;
-				this.combatManager.damageMonster(
-					client,
+				this.damageResolver.damageMonster(
+					{
+						playerId: client.sessionId,
+						weaponKind: 'sword',
+						combatEntityId: `legacy:${++this.legacyAttackSequence}`,
+					},
 					message.monsterId,
 					PLAYER_ATTACK_DAMAGE,
 				);
@@ -170,6 +202,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onLeave(client: Client) {
+		this.combatEntitySystem.removeOwner(client.sessionId);
+		this.combatSystem.removePlayer(client.sessionId);
 		this.state.players.delete(client.sessionId);
 	}
 

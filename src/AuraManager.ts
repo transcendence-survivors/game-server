@@ -1,12 +1,12 @@
 import { GameState, Player, Aura } from '../../shared-package';
-import { CombatManager } from './CombatManager';
+import { DamageResolver } from './combat/DamageResolver';
 
 const MAX_CATCHUP_STRIKES = 4;
 
 export class AuraManager {
 	constructor(
 		private readonly roomState: GameState,
-		private readonly combat: CombatManager,
+		private readonly damage: DamageResolver,
 	) {}
 
 	update(dtSeconds: number) {
@@ -38,6 +38,10 @@ export class AuraManager {
 	}
 
 	private strike(sessionId: string, player: Player, aura: Aura) {
+		const weapon = player.weapons.get('aura');
+		if (!weapon) return;
+		weapon.activationSequence++;
+		const combatEntityId = `aura:${sessionId}:${weapon.activationSequence}`;
 		const r2 = aura.radius * aura.radius;
 		const hits: string[] = [];
 		this.roomState.monsters.forEach((monster, id) => {
@@ -47,7 +51,15 @@ export class AuraManager {
 			if (dx * dx + dz * dz <= r2) hits.push(id);
 		});
 		for (const id of hits) {
-			this.combat.damageMonsterBySession(sessionId, id, aura.damage);
+			this.damage.damageMonster(
+				{
+					playerId: sessionId,
+					weaponKind: 'aura',
+					combatEntityId,
+				},
+				id,
+				aura.damage,
+			);
 		}
 	}
 }
