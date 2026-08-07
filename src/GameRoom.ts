@@ -148,8 +148,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 				players.length > 0 && players.every((p) => p.ready);
 			if (allReady) {
 				this.state.started = true;
-				this.lock();
-				this.broadcast('gameStart');
+				this.broadcast('gameStart', { seed: this.world.seed });
 			}
 		});
 	}
@@ -159,6 +158,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onJoin(client: Client) {
+		// if (!this.state.started) return;
 		console.log(`Client ${client.sessionId} `);
 
 		const index = this.state.players.size; // 0..3
@@ -177,20 +177,19 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.y = spawn.y;
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
-		client.send('worldSeed', { seed: this.world.seed });
 	}
 
 	onLeave(client: Client) {
 		this.state.players.delete(client.sessionId);
 
 		// TODO double code
-		if (this.state.started) return;
+		if (!this.state.started) return;
 		const players = [...this.state.players.values()];
 		const allReady = players.length > 0 && players.every((p) => p.ready);
 		if (allReady) {
 			this.state.started = true;
 			this.lock();
-			this.broadcast('game_start');
+			this.broadcast('gameStart');
 		}
 	}
 
