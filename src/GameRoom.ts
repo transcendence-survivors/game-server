@@ -158,10 +158,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onJoin(client: Client) {
-		// if (!this.state.started) return;
 		console.log(`Client ${client.sessionId} `);
 
-		const index = this.state.players.size; // 0..3
+		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
 		const spawn = findSpawnPoint(
@@ -173,6 +172,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			ACCESS_RADIUS,
 		);
 		const player = new Player();
+		player.id = (index + 1) as 1 | 2 | 3 | 4;
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;
@@ -181,16 +181,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	onLeave(client: Client) {
 		this.state.players.delete(client.sessionId);
-
-		// TODO double code
-		if (!this.state.started) return;
-		const players = [...this.state.players.values()];
-		const allReady = players.length > 0 && players.every((p) => p.ready);
-		if (allReady) {
-			this.state.started = true;
-			this.lock();
-			this.broadcast('gameStart');
-		}
 	}
 
 	onDispose() {}
