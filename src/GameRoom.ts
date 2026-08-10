@@ -20,6 +20,9 @@ import {
 	weaponConfigRegistry,
 	type AuraWeaponConfig,
 	type SwordWeaponConfig,
+	type AxeWeaponConfig,
+	type StaffWeaponConfig,
+	type BowWeaponConfig,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { MonsterManager } from './MonsterManager';
@@ -31,6 +34,9 @@ import { CombatSystem } from './combat/CombatSystem';
 import { WeaponFactory } from './combat/WeaponFactory';
 import { AuraWeapon } from './combat/AuraWeapon';
 import { SwordWeapon } from './combat/SwordWeapon';
+import { AxeWeapon } from './combat/AxeWeapon';
+import { StaffWeapon } from './combat/StaffWeapon';
+import { BowWeapon } from './combat/BowWeapon';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -89,6 +95,33 @@ export class GameRoom extends Room<{ state: GameState }> {
 					ownerSessionId,
 					state,
 					config as Readonly<SwordWeaponConfig>,
+				),
+		);
+		weaponFactory.register(
+			'axe',
+			(ownerSessionId, state, config) =>
+				new AxeWeapon(
+					ownerSessionId,
+					state,
+					config as Readonly<AxeWeaponConfig>,
+				),
+		);
+		weaponFactory.register(
+			'staff',
+			(ownerSessionId, state, config) =>
+				new StaffWeapon(
+					ownerSessionId,
+					state,
+					config as Readonly<StaffWeaponConfig>,
+				),
+		);
+		weaponFactory.register(
+			'bow',
+			(ownerSessionId, state, config) =>
+				new BowWeapon(
+					ownerSessionId,
+					state,
+					config as Readonly<BowWeaponConfig>,
 				),
 		);
 		this.combatSystem = new CombatSystem(
@@ -209,6 +242,15 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const sword = new WeaponState();
 		sword.kind = weaponConfigRegistry.get('sword').kind;
 		player.weapons.set(sword.kind, sword);
+		const axe = new WeaponState();
+		axe.kind = weaponConfigRegistry.get('axe').kind;
+		player.weapons.set(axe.kind, axe);
+		const staff = new WeaponState();
+		staff.kind = weaponConfigRegistry.get('staff').kind;
+		player.weapons.set(staff.kind, staff);
+		const bow = new WeaponState();
+		bow.kind = weaponConfigRegistry.get('bow').kind;
+		player.weapons.set(bow.kind, bow);
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;
