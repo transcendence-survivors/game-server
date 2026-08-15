@@ -14,6 +14,7 @@ import { KillRewardSystem } from './KillRewardSystem';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 import { WeaponFactory } from './WeaponFactory';
 import { CombatEntitySystem } from './CombatEntitySystem';
+import { AuraWeapon } from './AuraWeapon';
 
 function createDamageResolver(state: GameState): DamageResolver {
 	const clients = { getById: () => undefined } as unknown as ClientArray;
@@ -85,6 +86,60 @@ describe('DamageResolver', () => {
 		expect(player.life.current).toBe(50.5);
 		expect(state.monsters.has('monster')).toBe(false);
 	});
+
+	test('resolves simultaneous player hits with one deterministic kill credit', () => {
+		const { state, player: first, monster } = createCombatState(10);
+		const second = new Player();
+		second.life.takeDamage(20);
+		second.stats.lifesteal = 50;
+		state.players.set('second', second);
+		const damage = createDamageResolver(state);
+		const firstHit = damage.damageMonster(
+			{ playerId: 'player', weaponKind: 'aura', combatEntityId: 'first' },
+			'monster',
+			6,
+		);
+		const secondHit = damage.damageMonster(
+			{ playerId: 'second', weaponKind: 'bow', combatEntityId: 'second' },
+			'monster',
+			6,
+		);
+		expect(firstHit).toEqual({ requested: 6, applied: 6, fatal: false });
+		expect(secondHit).toEqual({ requested: 6, applied: 4, fatal: true });
+		expect(first.stats.killAmount).toBe(0);
+		expect(second.stats.killAmount).toBe(1);
+		expect(second.experience.xp).toBe(monster.xpReward);
+		expect(second.life.current).toBe(82);
+		expect(state.monsters.has('monster')).toBe(false);
+		expect(damage.drainImpactEvents()).toHaveLength(2);
+	});
+
+	test('reports every level gained from one reward', () => {
+		const { state, monster } = createCombatState(1);
+		monster.xpReward = 1000;
+		const sent: string[] = [];
+		const gained: number[] = [];
+		const clients = {
+			getById: () => ({ send: (message: string) => sent.push(message) }),
+		} as unknown as ClientArray;
+		const damage = new DamageResolver(
+			state,
+			new KillRewardSystem(state, clients, (_playerId, levels) =>
+				gained.push(levels),
+			),
+		);
+		damage.damageMonster(
+			{
+				playerId: 'player',
+				weaponKind: 'sword',
+				combatEntityId: 'fatal',
+			},
+			'monster',
+			1,
+		);
+		expect(gained).toEqual([sent.length]);
+		expect(sent.length).toBeGreaterThan(1);
+	});
 });
 
 describe('Weapon', () => {
@@ -139,6 +194,26 @@ describe('Weapon', () => {
 		});
 		expect(weaponState.activationSequence).toBe(1);
 	});
+
+	test('caps catch-up attacks after a large delta', () => {
+		const { state, player } = createCombatState();
+		const damage = createDamageResolver(state);
+		const weaponState = new WeaponState();
+		weaponState.kind = 'aura';
+		const weapon = new TestAuraWeapon(
+			'player',
+			weaponState,
+			weaponConfigRegistry.get('aura'),
+		);
+		weapon.update(100, player, {
+			roomState: state,
+			damage,
+			entities: createEntities(state, damage),
+			elapsedS: 100,
+		});
+		expect(weapon.attackCount).toBe(4);
+		expect(weaponState.activationSequence).toBe(4);
+	});
 });
 
 describe('WeaponFactory', () => {
@@ -159,5 +234,34 @@ describe('WeaponFactory', () => {
 				),
 		);
 		expect(factory.create('player', state)).toBeInstanceOf(TestAuraWeapon);
+	});
+});
+
+describe('four-player combat recipe', () => {
+	test('updates four authoritative loadouts against the same room state', () => {
+		const state = new GameState();
+		const monster = new Monster();
+		monster.life = new Life(100);
+		state.monsters.set('shared-target', monster);
+		for (let index = 0; index < 4; index++)
+			state.players.set(`player-${index}`, new Player());
+		const damage = createDamageResolver(state);
+		const entities = createEntities(state, damage);
+		for (let index = 0; index < 4; index++) {
+			const weaponState = new WeaponState();
+			weaponState.kind = 'aura';
+			new AuraWeapon(
+				`player-${index}`,
+				weaponState,
+				weaponConfigRegistry.get('aura'),
+			).update(1, state.players.get(`player-${index}`)!, {
+				roomState: state,
+				damage,
+				entities,
+				elapsedS: 1,
+			});
+		}
+		expect(monster.life.current).toBe(80);
+		expect(damage.drainImpactEvents()).toHaveLength(4);
 	});
 });
