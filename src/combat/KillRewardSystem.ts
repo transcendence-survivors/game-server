@@ -9,6 +9,10 @@ export class KillRewardSystem {
 	constructor(
 		private readonly roomState: GameState,
 		private readonly clients: ClientArray,
+		private readonly onLevelsGained?: (
+			playerId: string,
+			levelsGained: number,
+		) => void,
 	) {}
 
 	reward(playerId: string, monster: Monster, appliedDamage: number): void {
@@ -17,6 +21,7 @@ export class KillRewardSystem {
 		const previousLevel = player.experience.level;
 		player.experience.gain(monster.xpReward);
 		const levelsGained = player.experience.level - previousLevel;
+		if (levelsGained > 0) this.onLevelsGained?.(playerId, levelsGained);
 		const client = this.clients.getById(playerId);
 		if (client) {
 			for (let index = 0; index < levelsGained; index++)

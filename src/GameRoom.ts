@@ -6,9 +6,7 @@ import {
 	RAY_DIR_Z,
 	RAY_SPEED,
 	MoveInput,
-	AttackInput,
 	Player,
-	PLAYER_ATTACK_DAMAGE,
 	ACCESS_RADIUS,
 	findSpawnPoint,
 	rollUpgradeOptions,
@@ -52,7 +50,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private combatEntitySystem!: CombatEntitySystem;
 	private pendingOffers = new Map<string, UpgradeDef[]>();
 	private upgradeRollSequences = new Map<string, number>();
-	private legacyAttackSequence = 0;
+	private availableUpgradeChoices = new Map<string, number>();
 
 	async onCreate(options: GameRoomOptions) {
 		const roomName = options?.roomName?.trim().toLowerCase();
@@ -68,7 +66,17 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(Math.floor(this.state.seed));
 		this.inputValidator = new InputValidator(this.world, this.state);
-		const killRewards = new KillRewardSystem(this.state, this.clients);
+		const killRewards = new KillRewardSystem(
+			this.state,
+			this.clients,
+			(playerId, levelsGained) => {
+				this.availableUpgradeChoices.set(
+					playerId,
+					(this.availableUpgradeChoices.get(playerId) ?? 0) +
+						levelsGained,
+				);
+			},
+		);
 		this.damageResolver = new DamageResolver(this.state, killRewards);
 		this.monsterManager = new MonsterManager(
 			this.world,
@@ -162,24 +170,19 @@ export class GameRoom extends Room<{ state: GameState }> {
 				this.inputValidator.validate(client, message);
 			},
 		);
-		this.onMessage(
-			ClientMessage.Attack,
-			(client: Client, message: AttackInput) => {
-				if (typeof message?.monsterId !== 'string') return;
-				this.damageResolver.damageMonster(
-					{
-						playerId: client.sessionId,
-						weaponKind: 'sword',
-						combatEntityId: `legacy:${++this.legacyAttackSequence}`,
-					},
-					message.monsterId,
-					PLAYER_ATTACK_DAMAGE,
-				);
-			},
-		);
 		this.onMessage(ClientMessage.RequestUpgradeOptions, (client) => {
 			const player = this.state.players.get(client.sessionId);
-			if (!player) return;
+			if (
+				!player ||
+				player.life.isDepleted() ||
+				(this.availableUpgradeChoices.get(client.sessionId) ?? 0) <= 0
+			)
+				return;
+			const pending = this.pendingOffers.get(client.sessionId);
+			if (pending) {
+				this.sendUpgradeOptions(client, pending);
+				return;
+			}
 
 			const sequence =
 				(this.upgradeRollSequences.get(client.sessionId) ?? 0) + 1;
@@ -198,22 +201,21 @@ export class GameRoom extends Room<{ state: GameState }> {
 			const options = rollUpgradeOptions(player, 3, random);
 			this.pendingOffers.set(client.sessionId, options);
 
-			client.send(
-				ServerMessage.UpgradeOptions,
-				options.map((o) => ({
-					id: o.id,
-					name: o.name,
-					description: o.description,
-					iconUrl: o.iconUrl,
-				})),
-			);
+			this.sendUpgradeOptions(client, options);
 		});
 
 		this.onMessage(
 			ClientMessage.SelectUpgrade,
 			(client, message: SelectUpgradeInput) => {
 				const player = this.state.players.get(client.sessionId);
-				if (!player) return;
+				if (
+					!player ||
+					player.life.isDepleted() ||
+					!message ||
+					typeof message.id !== 'string' ||
+					message.id.length > 64
+				)
+					return;
 
 				const offered = this.pendingOffers.get(client.sessionId);
 				const upgrade = offered?.find(
@@ -227,12 +229,16 @@ export class GameRoom extends Room<{ state: GameState }> {
 				}
 				if (!applyUpgrade(player, upgrade)) return;
 				this.pendingOffers.delete(client.sessionId);
+				this.availableUpgradeChoices.set(
+					client.sessionId,
+					Math.max(
+						0,
+						(this.availableUpgradeChoices.get(client.sessionId) ??
+							0) - 1,
+					),
+				);
 			},
 		);
-	}
-
-	onPlayerLevelUp(client: Client) {
-		client.send(ServerMessage.LevelUp);
 	}
 
 	onJoin(client: Client) {
@@ -263,10 +269,24 @@ export class GameRoom extends Room<{ state: GameState }> {
 	onLeave(client: Client) {
 		this.pendingOffers.delete(client.sessionId);
 		this.upgradeRollSequences.delete(client.sessionId);
+		this.availableUpgradeChoices.delete(client.sessionId);
+		this.inputValidator.removeClient(client.sessionId);
 		this.combatEntitySystem.removeOwner(client.sessionId);
 		this.combatSystem.removePlayer(client.sessionId);
 		this.state.players.delete(client.sessionId);
 	}
 
 	onDispose() {}
+
+	private sendUpgradeOptions(client: Client, options: UpgradeDef[]): void {
+		client.send(
+			ServerMessage.UpgradeOptions,
+			options.map(({ id, name, description, iconUrl }) => ({
+				id,
+				name,
+				description,
+				iconUrl,
+			})),
+		);
+	}
 }
