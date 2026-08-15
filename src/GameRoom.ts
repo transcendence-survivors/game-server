@@ -12,6 +12,7 @@ import {
 	ACCESS_RADIUS,
 	findSpawnPoint,
 	rollUpgradeOptions,
+	applyUpgrade,
 	isInsideRay,
 	ClientMessage,
 	ServerMessage,
@@ -23,10 +24,10 @@ import {
 	type AxeWeaponConfig,
 	type StaffWeaponConfig,
 	type BowWeaponConfig,
+	type UpgradeDef,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
 import { MonsterManager } from './MonsterManager';
-import { UPGRADE_POOL } from '../../shared-package/src/utils/Upgrades';
 import { DamageResolver } from './combat/DamageResolver';
 import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
@@ -49,7 +50,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private monsterManager!: MonsterManager;
 	private combatSystem!: CombatSystem;
 	private combatEntitySystem!: CombatEntitySystem;
-	private pendingOffers: Map<string, string[]> = new Map();
+	private pendingOffers = new Map<string, UpgradeDef[]>();
+	private upgradeRollSequences = new Map<string, number>();
 	private legacyAttackSequence = 0;
 
 	async onCreate(options: GameRoomOptions) {
@@ -179,11 +181,22 @@ export class GameRoom extends Room<{ state: GameState }> {
 			const player = this.state.players.get(client.sessionId);
 			if (!player) return;
 
-			const options = rollUpgradeOptions(player, 3);
-			this.pendingOffers.set(
-				client.sessionId,
-				options.map((o) => o.id),
-			);
+			const sequence =
+				(this.upgradeRollSequences.get(client.sessionId) ?? 0) + 1;
+			this.upgradeRollSequences.set(client.sessionId, sequence);
+			let randomState = this.state.seed ^ sequence;
+			for (const character of client.sessionId)
+				randomState = Math.imul(
+					randomState ^ character.charCodeAt(0),
+					16777619,
+				);
+			const random = () => {
+				randomState =
+					(Math.imul(randomState, 1664525) + 1013904223) | 0;
+				return (randomState >>> 0) / 4294967296;
+			};
+			const options = rollUpgradeOptions(player, 3, random);
+			this.pendingOffers.set(client.sessionId, options);
 
 			client.send(
 				ServerMessage.UpgradeOptions,
@@ -203,15 +216,16 @@ export class GameRoom extends Room<{ state: GameState }> {
 				if (!player) return;
 
 				const offered = this.pendingOffers.get(client.sessionId);
-				if (!offered || !offered.includes(message.id)) {
+				const upgrade = offered?.find(
+					(option) => option.id === message.id,
+				);
+				if (!upgrade) {
 					console.warn(
 						`${client.sessionId} tried to select invalid upgrade: ${message.id}`,
 					);
 					return;
 				}
-				const upgrade = UPGRADE_POOL.find((u) => u.id === message.id);
-				if (!upgrade) return;
-				upgrade.apply(player);
+				if (!applyUpgrade(player, upgrade)) return;
 				this.pendingOffers.delete(client.sessionId);
 			},
 		);
@@ -239,18 +253,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const aura = new WeaponState();
 		aura.kind = weaponConfigRegistry.get('aura').kind;
 		player.weapons.set(aura.kind, aura);
-		const sword = new WeaponState();
-		sword.kind = weaponConfigRegistry.get('sword').kind;
-		player.weapons.set(sword.kind, sword);
-		const axe = new WeaponState();
-		axe.kind = weaponConfigRegistry.get('axe').kind;
-		player.weapons.set(axe.kind, axe);
-		const staff = new WeaponState();
-		staff.kind = weaponConfigRegistry.get('staff').kind;
-		player.weapons.set(staff.kind, staff);
-		const bow = new WeaponState();
-		bow.kind = weaponConfigRegistry.get('bow').kind;
-		player.weapons.set(bow.kind, bow);
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;
@@ -259,6 +261,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onLeave(client: Client) {
+		this.pendingOffers.delete(client.sessionId);
+		this.upgradeRollSequences.delete(client.sessionId);
 		this.combatEntitySystem.removeOwner(client.sessionId);
 		this.combatSystem.removePlayer(client.sessionId);
 		this.state.players.delete(client.sessionId);

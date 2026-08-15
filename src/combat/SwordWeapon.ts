@@ -17,7 +17,7 @@ export class SwordWeapon extends Weapon<SwordWeaponConfig> {
 	}
 
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
-		const range = this.config.baseRange * this.rangeMultiplier();
+		const range = this.config.baseRange * this.rangeMultiplier(player);
 		const halfAngle = (this.config.totalAngleDegrees * Math.PI) / 360;
 		const rotationY = player.rotationY;
 		const origin = { x: player.x, z: player.z };
@@ -49,8 +49,7 @@ export class SwordWeapon extends Weapon<SwordWeaponConfig> {
 			directionZ: forward.z,
 			rotationY,
 			scale: range,
-			lifetimeS:
-				this.config.effectLifetimeS * this.durationMultiplier(),
+			lifetimeS: this.config.effectLifetimeS * this.durationMultiplier(),
 			damage: 0,
 			collisionRadius: 0,
 		});

@@ -19,14 +19,14 @@ export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
 		const target = new TargetingSystem(context.roomState).nearestMonster(
 			player,
-			this.config.baseAcquisitionRange * this.rangeMultiplier(),
+			this.config.baseAcquisitionRange * this.rangeMultiplier(player),
 		);
 		if (!target) return false;
 		const dx = target.monster.x - player.x;
 		const dz = target.monster.z - player.z;
 		const length = Math.hypot(dx, dz);
 		if (length <= Number.EPSILON) return false;
-		const speed = this.config.baseProjectileSpeed;
+		const speed = this.stats.speed(this.config.baseProjectileSpeed);
 		const entity = context.entities.spawn({
 			kind: 'fireball',
 			weaponKind: 'staff',
@@ -40,13 +40,14 @@ export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
 			directionZ: dz / length,
 			lifetimeS: this.config.maxLifetimeS * this.durationMultiplier(),
 			damage: this.damage(player),
-			collisionRadius: this.config.collisionRadius,
+			collisionRadius:
+				this.config.collisionRadius * this.stats.sizeMultiplier(player),
 			velocityX: (dx / length) * speed,
 			velocityZ: (dz / length) * speed,
 			projectileSpeed: speed,
 			maxTurnRateRadiansS:
 				(this.config.maxTurnRateDegreesS * Math.PI) / 180,
-			penetration: this.config.penetration,
+			penetration: this.stats.penetration(this.config.penetration),
 			terrainOffset: 0.65,
 		});
 		if (!entity) return false;

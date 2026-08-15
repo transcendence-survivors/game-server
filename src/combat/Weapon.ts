@@ -7,6 +7,7 @@ import {
 } from '../../../shared-package';
 import type { DamageResolver } from './DamageResolver';
 import type { CombatEntitySystem } from './CombatEntitySystem';
+import { WeaponStatResolver } from './WeaponStatResolver';
 
 export interface WeaponAttackContext {
 	roomState: GameState;
@@ -15,17 +16,17 @@ export interface WeaponAttackContext {
 	elapsedS: number;
 }
 
-export abstract class Weapon<
-	TConfig extends WeaponConfig = WeaponConfig,
-> {
+export abstract class Weapon<TConfig extends WeaponConfig = WeaponConfig> {
 	private cooldownS: number;
 	private lastPeriodS: number;
+	protected readonly stats: WeaponStatResolver;
 
 	constructor(
 		readonly ownerSessionId: string,
 		readonly state: WeaponState,
 		readonly config: Readonly<TConfig>,
 	) {
+		this.stats = new WeaponStatResolver(config, state);
 		this.lastPeriodS = this.periodS();
 		this.cooldownS = this.lastPeriodS;
 	}
@@ -40,8 +41,7 @@ export abstract class Weapon<
 		const period = this.periodS(player);
 		if (!Number.isFinite(period) || period <= 0) return;
 		if (period !== this.lastPeriodS) {
-			this.cooldownS =
-				(this.cooldownS / this.lastPeriodS) * period;
+			this.cooldownS = (this.cooldownS / this.lastPeriodS) * period;
 			this.lastPeriodS = period;
 		}
 		this.cooldownS -= dtSeconds;
@@ -66,20 +66,15 @@ export abstract class Weapon<
 	}
 
 	protected damage(player: Player): number {
-		const scaling = this.levelScaling();
-		return (
-			this.config.baseDamage *
-			scaling.damage *
-			(player.stats.attackDamage / 100)
-		);
+		return this.stats.damage(player);
 	}
 
-	protected rangeMultiplier(): number {
-		return this.levelScaling().range;
+	protected rangeMultiplier(player: Player): number {
+		return this.stats.rangeMultiplier(player);
 	}
 
 	protected durationMultiplier(): number {
-		return this.levelScaling().duration;
+		return this.stats.durationMultiplier();
 	}
 
 	protected abstract attack(
@@ -88,21 +83,7 @@ export abstract class Weapon<
 	): boolean;
 
 	private periodS(player?: Player): number {
-		const playerAttackRate = player?.stats.attackSpeed ?? 1;
-		const attackRate = Math.min(
-			COMBAT_LIMITS.maxFinalAttackRate,
-			this.config.baseAttackRate *
-				this.levelScaling().attackRate *
-				playerAttackRate,
-		);
+		const attackRate = this.stats.attackRate(player);
 		return 1 / attackRate;
-	}
-
-	private levelScaling() {
-		const level = Math.min(
-			Math.max(1, Math.trunc(this.state.level)),
-			this.config.maxLevel,
-		);
-		return this.config.levelScaling[level - 1];
 	}
 }

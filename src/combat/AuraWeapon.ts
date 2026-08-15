@@ -15,7 +15,7 @@ export class AuraWeapon extends Weapon<AuraWeaponConfig> {
 	}
 
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
-		const radius = this.config.baseRadius * this.rangeMultiplier();
+		const radius = this.config.baseRadius * this.rangeMultiplier(player);
 		const damage = this.damage(player);
 		player.aura.radius = radius;
 		player.aura.damage = damage;

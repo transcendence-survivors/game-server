@@ -18,8 +18,9 @@ export class AxeWeapon extends ProjectileWeapon<AxeWeaponConfig> {
 
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
 		const direction = forwardVector(player.rotationY);
-		const speed = this.config.baseProjectileSpeed;
-		const distance = this.config.baseTravelDistance * this.rangeMultiplier();
+		const speed = this.stats.speed(this.config.baseProjectileSpeed);
+		const distance =
+			this.config.baseTravelDistance * this.rangeMultiplier(player);
 		const entity = context.entities.spawn({
 			kind: 'axe',
 			weaponKind: 'axe',
@@ -36,7 +37,8 @@ export class AxeWeapon extends ProjectileWeapon<AxeWeaponConfig> {
 				this.config.baseActiveDurationS * this.durationMultiplier(),
 			damage: this.damage(player),
 			collisionRadius:
-				this.config.baseContactRadius * this.rangeMultiplier(),
+				this.config.baseContactRadius *
+				this.stats.sizeMultiplier(player),
 			velocityX: direction.x * speed,
 			velocityZ: direction.z * speed,
 			contactIntervalS: this.config.damageIntervalS,
