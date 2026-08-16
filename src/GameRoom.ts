@@ -11,17 +11,11 @@ import {
 	findSpawnPoint,
 	rollUpgradeOptions,
 	applyUpgrade,
-	isInsideRay,
 	ClientMessage,
 	ServerMessage,
 	WeaponState,
 	type SelectUpgradeInput,
 	weaponConfigRegistry,
-	type AuraWeaponConfig,
-	type SwordWeaponConfig,
-	type AxeWeaponConfig,
-	type StaffWeaponConfig,
-	type BowWeaponConfig,
 	type UpgradeDef,
 } from '../../shared-package';
 import { InputValidator } from './InputValidator';
@@ -30,12 +24,7 @@ import { DamageResolver } from './combat/DamageResolver';
 import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
-import { WeaponFactory } from './combat/WeaponFactory';
-import { AuraWeapon } from './combat/AuraWeapon';
-import { SwordWeapon } from './combat/SwordWeapon';
-import { AxeWeapon } from './combat/AxeWeapon';
-import { StaffWeapon } from './combat/StaffWeapon';
-import { BowWeapon } from './combat/BowWeapon';
+import { createWeaponFactory } from './combat/createWeaponFactory';
 
 interface GameRoomOptions {
 	roomName: string;
@@ -88,52 +77,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.damageResolver,
 			(x, z) => this.world.height(x, z),
 		);
-		const weaponFactory = new WeaponFactory(weaponConfigRegistry);
-		weaponFactory.register(
-			'aura',
-			(ownerSessionId, state, config) =>
-				new AuraWeapon(
-					ownerSessionId,
-					state,
-					config as Readonly<AuraWeaponConfig>,
-				),
-		);
-		weaponFactory.register(
-			'sword',
-			(ownerSessionId, state, config) =>
-				new SwordWeapon(
-					ownerSessionId,
-					state,
-					config as Readonly<SwordWeaponConfig>,
-				),
-		);
-		weaponFactory.register(
-			'axe',
-			(ownerSessionId, state, config) =>
-				new AxeWeapon(
-					ownerSessionId,
-					state,
-					config as Readonly<AxeWeaponConfig>,
-				),
-		);
-		weaponFactory.register(
-			'staff',
-			(ownerSessionId, state, config) =>
-				new StaffWeapon(
-					ownerSessionId,
-					state,
-					config as Readonly<StaffWeaponConfig>,
-				),
-		);
-		weaponFactory.register(
-			'bow',
-			(ownerSessionId, state, config) =>
-				new BowWeapon(
-					ownerSessionId,
-					state,
-					config as Readonly<BowWeaponConfig>,
-				),
-		);
+		const weaponFactory = createWeaponFactory();
 		this.combatSystem = new CombatSystem(
 			this.state,
 			this.damageResolver,
@@ -168,6 +112,23 @@ export class GameRoom extends Room<{ state: GameState }> {
 			ClientMessage.Move,
 			(client: Client, message: MoveInput) => {
 				this.inputValidator.validate(client, message);
+			},
+		);
+		this.onMessage(
+			ClientMessage.SetDebugImmortal,
+			(client: Client, message: unknown) => {
+				const player = this.state.players.get(client.sessionId);
+				if (
+					!player ||
+					typeof message !== 'object' ||
+					message === null ||
+					typeof (message as { enabled?: unknown }).enabled !==
+						'boolean'
+				)
+					return;
+				player.debugImmortal = (
+					message as { enabled: boolean }
+				).enabled;
 			},
 		);
 		this.onMessage(ClientMessage.RequestUpgradeOptions, (client) => {
@@ -244,7 +205,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	onJoin(client: Client) {
 		console.log(`Client ${client.sessionId} `);
 
-		const index = this.state.players.size; // 0..3
+		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
 		const spawn = findSpawnPoint(
@@ -256,9 +217,12 @@ export class GameRoom extends Room<{ state: GameState }> {
 			ACCESS_RADIUS,
 		);
 		const player = new Player();
-		const aura = new WeaponState();
-		aura.kind = weaponConfigRegistry.get('aura').kind;
-		player.weapons.set(aura.kind, aura);
+		player.aura.radius = 0;
+		for (const kind of ['axe'] as const) {
+			const weapon = new WeaponState();
+			weapon.kind = weaponConfigRegistry.get(kind).kind;
+			player.weapons.set(weapon.kind, weapon);
+		}
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;

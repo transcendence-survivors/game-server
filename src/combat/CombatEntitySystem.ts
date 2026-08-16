@@ -2,10 +2,14 @@ import {
 	COMBAT_LIMITS,
 	CombatEntity,
 	type CombatEntityKind,
+	type CombatHitboxShape,
 	type GameState,
+	monsterHitboxPrimitives,
+	type MonsterWorldHitbox,
 	type WeaponKind,
 } from '../../../shared-package';
 import type { DamageResolver } from './DamageResolver';
+import { MonsterSpatialIndex } from './MonsterSpatialIndex';
 import {
 	CombatEntityBehavior,
 	PersistentZoneBehavior,
@@ -41,6 +45,11 @@ export interface SpawnCombatEntity {
 	lifetimeS: number;
 	damage: number;
 	collisionRadius: number;
+	hitboxShape?: CombatHitboxShape;
+	collisionHeight?: number;
+	collisionWidth?: number;
+	collisionDepth?: number;
+	collisionHalfAngle?: number;
 	velocityX?: number;
 	velocityY?: number;
 	velocityZ?: number;
@@ -60,6 +69,8 @@ interface RuntimeEntry {
 
 export class CombatEntitySystem {
 	private readonly runtime = new Map<string, RuntimeEntry>();
+	private readonly monsterHitboxes = new Map<string, MonsterWorldHitbox[]>();
+	private readonly monsterSpatialIndex = new MonsterSpatialIndex();
 	private elapsedS = 0;
 	private nextSequence = 1;
 
@@ -72,7 +83,10 @@ export class CombatEntitySystem {
 	spawn(input: SpawnCombatEntity): CombatEntity | undefined {
 		if (!this.roomState.players.has(input.ownerSessionId)) return undefined;
 		if (!this.isFiniteInput(input)) return undefined;
-		if (this.roomState.combatEntities.size >= COMBAT_LIMITS.maxCombatEntitiesPerRoom)
+		if (
+			this.roomState.combatEntities.size >=
+			COMBAT_LIMITS.maxCombatEntitiesPerRoom
+		)
 			return undefined;
 		let owned = 0;
 		this.roomState.combatEntities.forEach((entity) => {
@@ -95,37 +109,64 @@ export class CombatEntitySystem {
 		entity.directionZ = input.directionZ ?? 0;
 		entity.rotationY = input.rotationY ?? 0;
 		entity.scale = input.scale ?? 1;
+		entity.hitboxShape = input.hitboxShape ?? 'sphere';
+		entity.hitboxRadius = input.collisionRadius;
+		entity.hitboxHeight =
+			input.collisionHeight ?? input.collisionRadius * 2;
+		entity.hitboxWidth = input.collisionWidth ?? input.collisionRadius * 2;
+		entity.hitboxDepth = input.collisionDepth ?? input.collisionRadius * 2;
+		entity.hitboxHalfAngle = input.collisionHalfAngle ?? Math.PI / 2;
 		entity.spawnSequence = sequence;
 		entity.createdAtS = this.elapsedS;
 		entity.phaseStartedAtS = this.elapsedS;
 		entity.expiresAtS =
-			this.elapsedS + Math.min(input.lifetimeS, COMBAT_LIMITS.maxEntityLifetimeS);
+			this.elapsedS +
+			Math.min(input.lifetimeS, COMBAT_LIMITS.maxEntityLifetimeS);
 		this.roomState.combatEntities.set(entity.id, entity);
 		this.runtime.set(entity.id, {
 			behavior: this.createBehavior(input.behavior),
 			state: {
 				damage: input.damage,
 				collisionRadius: input.collisionRadius,
+				hitboxShape: entity.hitboxShape,
+				collisionHeight: entity.hitboxHeight,
+				collisionWidth: entity.hitboxWidth,
+				collisionDepth: entity.hitboxDepth,
+				collisionHalfAngle: entity.hitboxHalfAngle,
 				velocityX: input.velocityX ?? 0,
 				velocityY: input.velocityY ?? 0,
 				velocityZ: input.velocityZ ?? 0,
 				penetration: Math.max(0, Math.trunc(input.penetration ?? 0)),
-				contactIntervalS: Math.max(0, input.contactIntervalS ?? Infinity),
+				contactIntervalS: Math.max(
+					0,
+					input.contactIntervalS ?? Infinity,
+				),
 				terrainOffset: input.terrainOffset ?? 0,
-				removeOnTerrainCollision: input.removeOnTerrainCollision ?? false,
+				removeOnTerrainCollision:
+					input.removeOnTerrainCollision ?? false,
 				travelRemaining: Math.max(0, input.travelDistance ?? 0),
 				projectileSpeed: Math.max(0, input.projectileSpeed ?? 0),
-				maxTurnRateRadiansS: Math.max(0, input.maxTurnRateRadiansS ?? 0),
+				maxTurnRateRadiansS: Math.max(
+					0,
+					input.maxTurnRateRadiansS ?? 0,
+				),
 			},
 		});
 		return entity;
 	}
 
-	spawnBatch(inputs: readonly SpawnCombatEntity[]): CombatEntity[] | undefined {
+	spawnBatch(
+		inputs: readonly SpawnCombatEntity[],
+	): CombatEntity[] | undefined {
 		if (inputs.length === 0) return [];
-		if (inputs.some((input) => !this.roomState.players.has(input.ownerSessionId)))
+		if (
+			inputs.some(
+				(input) => !this.roomState.players.has(input.ownerSessionId),
+			)
+		)
 			return undefined;
-		if (inputs.some((input) => !this.isFiniteInput(input))) return undefined;
+		if (inputs.some((input) => !this.isFiniteInput(input)))
+			return undefined;
 		if (
 			this.roomState.combatEntities.size + inputs.length >
 			COMBAT_LIMITS.maxCombatEntitiesPerRoom
@@ -148,7 +189,8 @@ export class CombatEntitySystem {
 		const spawned: CombatEntity[] = [];
 		for (const input of inputs) {
 			const entity = this.spawn(input);
-			if (!entity) throw new Error('Validated combat entity batch became invalid');
+			if (!entity)
+				throw new Error('Validated combat entity batch became invalid');
 			spawned.push(entity);
 		}
 		return spawned;
@@ -159,6 +201,15 @@ export class CombatEntitySystem {
 		this.elapsedS += dtSeconds;
 		this.roomState.combatTimeS = this.elapsedS;
 		const ids = [...this.roomState.combatEntities.keys()].sort();
+		if (!ids.length) return;
+		this.monsterHitboxes.clear();
+		this.roomState.monsters.forEach((monster, id) =>
+			this.monsterHitboxes.set(
+				id,
+				monsterHitboxPrimitives(monster, this.elapsedS),
+			),
+		);
+		this.monsterSpatialIndex.rebuild(this.monsterHitboxes);
 		for (const id of ids) {
 			const entity = this.roomState.combatEntities.get(id);
 			const runtime = this.runtime.get(id);
@@ -170,19 +221,29 @@ export class CombatEntitySystem {
 				this.remove(id);
 				continue;
 			}
-			if (entity.targetId && !this.roomState.monsters.has(entity.targetId))
+			if (
+				entity.targetId &&
+				!this.roomState.monsters.has(entity.targetId)
+			)
 				entity.targetId = '';
 			if (this.elapsedS >= entity.expiresAtS) {
 				entity.phase = 'expiring';
 				this.remove(id);
 				continue;
 			}
-			const alive = runtime.behavior.update(entity, runtime.state, dtSeconds, {
-				state: this.roomState,
-				damage: this.damage,
-				elapsedS: this.elapsedS,
-				terrainHeight: this.terrainHeight,
-			});
+			const alive = runtime.behavior.update(
+				entity,
+				runtime.state,
+				dtSeconds,
+				{
+					state: this.roomState,
+					damage: this.damage,
+					elapsedS: this.elapsedS,
+					terrainHeight: this.terrainHeight,
+					monsterHitboxes: this.monsterHitboxes,
+					monsterSpatialIndex: this.monsterSpatialIndex,
+				},
+			);
 			if (!alive) this.remove(id);
 		}
 	}
@@ -215,7 +276,9 @@ export class CombatEntitySystem {
 		this.roomState.combatEntities.delete(id);
 	}
 
-	private createBehavior(kind: CombatEntityBehaviorKind): CombatEntityBehavior {
+	private createBehavior(
+		kind: CombatEntityBehaviorKind,
+	): CombatEntityBehavior {
 		switch (kind) {
 			case 'projectile':
 				return new ProjectileBehavior();
@@ -242,6 +305,10 @@ export class CombatEntitySystem {
 				input.lifetimeS,
 				input.damage,
 				input.collisionRadius,
+				input.collisionHeight ?? input.collisionRadius * 2,
+				input.collisionWidth ?? input.collisionRadius * 2,
+				input.collisionDepth ?? input.collisionRadius * 2,
+				input.collisionHalfAngle ?? Math.PI / 2,
 				input.velocityX ?? 0,
 				input.velocityY ?? 0,
 				input.velocityZ ?? 0,

@@ -65,6 +65,8 @@ describe('StaffWeapon', () => {
 		fire(result);
 		const fireball = [...result.state.combatEntities.values()][0];
 		expect(fireball.targetId).toBe('target');
+		expect(fireball.y).toBeCloseTo(1.2);
+		expect(fireball.z).toBeCloseTo(0.9);
 		result.entities.update(0.4);
 		expect(target.life.current).toBe(76);
 		expect(result.state.combatEntities.size).toBe(0);
@@ -78,7 +80,7 @@ describe('StaffWeapon', () => {
 		result.state.monsters.delete('target');
 		result.entities.update(0.1);
 		expect(fireball.targetId).toBe('');
-		expect(fireball.z).toBeCloseTo(1.8);
+		expect(fireball.z).toBeCloseTo(2.7);
 	});
 
 	test('caps its turn rate while following a moving target', () => {

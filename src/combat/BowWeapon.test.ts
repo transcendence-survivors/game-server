@@ -47,11 +47,14 @@ describe('BowWeapon', () => {
 		const arrows = [...result.state.combatEntities.values()];
 		expect(arrows).toHaveLength(3);
 		expect(new Set(arrows.map((arrow) => arrow.volleyId)).size).toBe(1);
-		expect(arrows.map((arrow) => arrow.rotationY)).toEqual([
-			Math.PI / 2 - (12 * Math.PI) / 180,
+		const expectedAngles = [
+			Math.PI / 2 - (45 * Math.PI) / 180,
 			Math.PI / 2,
-			Math.PI / 2 + (12 * Math.PI) / 180,
-		]);
+			Math.PI / 2 + (45 * Math.PI) / 180,
+		];
+		arrows.forEach((arrow, index) =>
+			expect(arrow.rotationY).toBeCloseTo(expectedAngles[index]!),
+		);
 	});
 
 	test('keeps concurrent volleys distinct and caps active arrows', () => {

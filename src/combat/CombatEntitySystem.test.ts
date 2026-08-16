@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClientArray } from 'colyseus';
 import { GameState, Life, Monster, Player } from '../../../shared-package';
-import { CombatEntitySystem, type SpawnCombatEntity } from './CombatEntitySystem';
+import {
+	CombatEntitySystem,
+	type SpawnCombatEntity,
+} from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
 
@@ -17,7 +20,9 @@ function createSystem() {
 	return { state, system };
 }
 
-function projectile(overrides: Partial<SpawnCombatEntity> = {}): SpawnCombatEntity {
+function projectile(
+	overrides: Partial<SpawnCombatEntity> = {},
+): SpawnCombatEntity {
 	return {
 		kind: 'arrow',
 		weaponKind: 'bow',
@@ -54,6 +59,15 @@ describe('CombatEntitySystem', () => {
 		expect(state.combatEntities.size).toBe(0);
 	});
 
+	test('hits the visible edge of a monster hitbox', () => {
+		const { state, system } = createSystem();
+		const monster = addMonster(state, 'wide-monster', 5, 1.4);
+		monster.hitboxRadius = 1;
+		system.spawn(projectile());
+		system.update(1);
+		expect(monster.life.current).toBe(40);
+	});
+
 	test('honors penetration before removing a projectile', () => {
 		const { state, system } = createSystem();
 		const first = addMonster(state, 'first', 3);
@@ -68,6 +82,9 @@ describe('CombatEntitySystem', () => {
 	test('applies persistent contact cooldowns and expires exactly', () => {
 		const { state, system } = createSystem();
 		const monster = addMonster(state, 'monster', 0);
+		// Garde la cible dans la zone apres le premier recul afin d'isoler ici le
+		// comportement du cooldown de contact.
+		monster.hitboxRadius = 3;
 		const entity = system.spawn({
 			...projectile(),
 			kind: 'axe',

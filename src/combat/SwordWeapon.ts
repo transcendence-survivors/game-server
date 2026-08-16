@@ -1,6 +1,8 @@
 import {
 	forwardVector,
-	isCircleInSector,
+	doesHalfCylinderHitVerticalCylinder,
+	doesHalfCylinderHitSphere,
+	monsterHitboxPrimitives,
 	type Player,
 	type SwordWeaponConfig,
 	type WeaponState,
@@ -20,18 +22,28 @@ export class SwordWeapon extends Weapon<SwordWeaponConfig> {
 		const range = this.config.baseRange * this.rangeMultiplier(player);
 		const halfAngle = (this.config.totalAngleDegrees * Math.PI) / 360;
 		const rotationY = player.rotationY;
-		const origin = { x: player.x, z: player.z };
+		const origin = {
+			x: player.x,
+			y: player.y + this.config.hitboxHeight / 2,
+			z: player.z,
+		};
 		const targets: string[] = [];
 		context.roomState.monsters.forEach((monster, monsterId) => {
 			if (
 				!monster.life.isDepleted() &&
-				isCircleInSector(
-					monster,
-					this.config.targetHitboxRadius,
-					origin,
-					rotationY,
-					range,
-					halfAngle,
+				monsterHitboxPrimitives(monster, context.elapsedS).some(
+					(part) => {
+						const sector = {
+							...origin,
+							radius: range,
+							height: this.config.hitboxHeight,
+							rotationY,
+							halfAngle,
+						};
+						return part.shape === 'sphere'
+							? doesHalfCylinderHitSphere(sector, part)
+							: doesHalfCylinderHitVerticalCylinder(sector, part);
+					},
 				)
 			)
 				targets.push(monsterId);
@@ -43,7 +55,7 @@ export class SwordWeapon extends Weapon<SwordWeaponConfig> {
 			ownerSessionId: this.ownerSessionId,
 			behavior: 'temporary-attack',
 			x: player.x,
-			y: player.y,
+			y: origin.y,
 			z: player.z,
 			directionX: forward.x,
 			directionZ: forward.z,
@@ -51,20 +63,39 @@ export class SwordWeapon extends Weapon<SwordWeaponConfig> {
 			scale: range,
 			lifetimeS: this.config.effectLifetimeS * this.durationMultiplier(),
 			damage: 0,
-			collisionRadius: 0,
+			collisionRadius: range,
+			hitboxShape: 'half-cylinder',
+			collisionHeight: this.config.hitboxHeight,
+			collisionHalfAngle: halfAngle,
 		});
 		if (!entity) return false;
 		const damage = this.damage(player);
-		for (const monsterId of targets.sort())
-			context.damage.damageMonster(
+		const knockback =
+			this.config.baseKnockback * this.rangeMultiplier(player);
+		for (const monsterId of targets.sort()) {
+			const monster = context.roomState.monsters.get(monsterId);
+			if (!monster) continue;
+			const dx = monster.x - player.x;
+			const dz = monster.z - player.z;
+			const distance = Math.hypot(dx, dz);
+			const directionX =
+				distance > Number.EPSILON ? dx / distance : forward.x;
+			const directionZ =
+				distance > Number.EPSILON ? dz / distance : forward.z;
+			const result = context.damage.damageMonster(
 				{
 					playerId: this.ownerSessionId,
 					weaponKind: 'sword',
 					combatEntityId: entity.id,
+					directionX,
+					directionZ,
+					knockback,
 				},
 				monsterId,
 				damage,
 			);
+			if (result.fatal) continue;
+		}
 		return true;
 	}
 }

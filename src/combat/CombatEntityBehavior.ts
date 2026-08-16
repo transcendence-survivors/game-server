@@ -1,14 +1,29 @@
 import {
 	type CombatEntity,
 	type GameState,
-	type Monster,
-	doesMovingCircleHitCircle,
+	doVerticalCylindersIntersect,
+	doesHalfCylinderHitVerticalCylinder,
+	doesHalfCylinderHitSphere,
+	doesMovingSphereHitSphere,
+	doesMovingSphereHitVerticalCylinder,
+	doesSphereHitVerticalCylinder,
+	doesSweptBoxHitSphere,
+	doesSweptBoxHitVerticalCylinder,
+	type CombatHitboxShape,
+	type MonsterWorldHitbox,
+	type VerticalCylinder,
 } from '../../../shared-package';
 import type { DamageResolver } from './DamageResolver';
+import type { MonsterSpatialIndex } from './MonsterSpatialIndex';
 
 export interface CombatEntityRuntime {
 	damage: number;
 	collisionRadius: number;
+	hitboxShape: CombatHitboxShape;
+	collisionHeight: number;
+	collisionWidth: number;
+	collisionDepth: number;
+	collisionHalfAngle: number;
 	velocityX: number;
 	velocityY: number;
 	velocityZ: number;
@@ -26,6 +41,8 @@ export interface CombatEntityUpdateContext {
 	damage: DamageResolver;
 	elapsedS: number;
 	terrainHeight: (x: number, z: number) => number;
+	monsterHitboxes: ReadonlyMap<string, readonly MonsterWorldHitbox[]>;
+	monsterSpatialIndex: MonsterSpatialIndex;
 }
 
 export abstract class CombatEntityBehavior {
@@ -55,6 +72,8 @@ export abstract class CombatEntityBehavior {
 				playerId: entity.ownerSessionId,
 				weaponKind: entity.weaponKind,
 				combatEntityId: entity.id,
+				directionX: entity.directionX,
+				directionZ: entity.directionZ,
 			},
 			monsterId,
 			runtime.damage,
@@ -64,20 +83,109 @@ export abstract class CombatEntityBehavior {
 		return true;
 	}
 
-	protected overlappingMonsters(
+	protected intersectingMonsterIds(
+		start: { x: number; y: number; z: number },
 		entity: CombatEntity,
 		runtime: CombatEntityRuntime,
-		state: GameState,
-	): Array<readonly [string, Monster]> {
-		const matches: Array<readonly [string, Monster]> = [];
-		state.monsters.forEach((monster, monsterId) => {
-			if (monster.life.isDepleted()) return;
-			const dx = monster.x - entity.x;
-			const dz = monster.z - entity.z;
-			if (dx * dx + dz * dz <= runtime.collisionRadius ** 2)
-				matches.push([monsterId, monster]);
+		context: CombatEntityUpdateContext,
+	): string[] {
+		const matches: string[] = [];
+		const radius =
+			runtime.hitboxShape === 'box'
+				? Math.hypot(runtime.collisionWidth, runtime.collisionDepth) / 2
+				: runtime.collisionRadius;
+		for (const monsterId of context.monsterSpatialIndex.querySwept(
+			start,
+			entity,
+			radius,
+		)) {
+			const monster = context.state.monsters.get(monsterId);
+			if (!monster || monster.life.isDepleted()) continue;
+			const hitboxes = context.monsterHitboxes.get(monsterId);
+			if (!hitboxes) continue;
+			if (
+				this.intersects(start, runtime, entity, hitboxes)
+			)
+				matches.push(monsterId);
+		}
+		return matches;
+	}
+
+	protected intersects(
+		start: { x: number; y: number; z: number },
+		runtime: CombatEntityRuntime,
+		entity: CombatEntity,
+		targets: readonly MonsterWorldHitbox[],
+	): boolean {
+		const end = { x: entity.x, y: entity.y, z: entity.z };
+		return targets.some((target) => {
+				switch (runtime.hitboxShape) {
+					case 'box':
+						return target.shape === 'sphere'
+							? doesSweptBoxHitSphere(
+									start,
+									end,
+									runtime.collisionWidth,
+									runtime.collisionHeight,
+									runtime.collisionDepth,
+									entity.directionX,
+									entity.directionZ,
+									target,
+								)
+							: doesSweptBoxHitVerticalCylinder(
+									start,
+									end,
+									runtime.collisionWidth,
+									runtime.collisionHeight,
+									runtime.collisionDepth,
+									entity.directionX,
+									entity.directionZ,
+									target,
+								);
+					case 'cylinder':
+						const cylinder = {
+							...end,
+							radius: runtime.collisionRadius,
+							height: runtime.collisionHeight,
+						};
+						return target.shape === 'sphere'
+							? doesSphereHitVerticalCylinder(target, cylinder)
+							: doVerticalCylindersIntersect(cylinder, target);
+					case 'half-cylinder':
+						const sector = {
+							...end,
+							radius: runtime.collisionRadius,
+							height: runtime.collisionHeight,
+							rotationY: entity.rotationY,
+							halfAngle: runtime.collisionHalfAngle,
+						};
+						return target.shape === 'sphere'
+							? doesHalfCylinderHitSphere(sector, target)
+							: doesHalfCylinderHitVerticalCylinder(
+									sector,
+									target,
+								);
+					case 'sphere':
+						if (target.shape === 'sphere')
+							return doesMovingSphereHitSphere(
+								start,
+								end,
+								runtime.collisionRadius,
+								target,
+							);
+						return start === entity
+							? doesSphereHitVerticalCylinder(
+									{ ...end, radius: runtime.collisionRadius },
+									target,
+								)
+							: doesMovingSphereHitVerticalCylinder(
+									start,
+									end,
+									runtime.collisionRadius,
+									target,
+								);
+				}
 		});
-		return matches.sort(([left], [right]) => left.localeCompare(right));
 	}
 }
 
@@ -92,7 +200,10 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 		const target = context.state.monsters.get(entity.targetId);
 		if (target?.life.isDepleted()) entity.targetId = '';
 		if (target && !target.life.isDepleted()) {
-			const desired = Math.atan2(target.z - entity.z, target.x - entity.x);
+			const desired = Math.atan2(
+				target.z - entity.z,
+				target.x - entity.x,
+			);
 			const current = Math.atan2(runtime.velocityZ, runtime.velocityX);
 			const delta = Math.atan2(
 				Math.sin(desired - current),
@@ -108,26 +219,17 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 			entity.directionX = Math.cos(heading);
 			entity.directionZ = Math.sin(heading);
 		}
-		const previous = { x: entity.x, z: entity.z };
+		const previous = { x: entity.x, y: entity.y, z: entity.z };
 		entity.x += runtime.velocityX * dtSeconds;
 		entity.z += runtime.velocityZ * dtSeconds;
 		entity.y =
 			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		const hits: string[] = [];
-		context.state.monsters.forEach((monster, monsterId) => {
-			if (
-				!monster.life.isDepleted() &&
-				doesMovingCircleHitCircle(
-					previous,
-					{ x: entity.x, z: entity.z },
-					runtime.collisionRadius,
-					monster,
-					0,
-				)
-			)
-				hits.push(monsterId);
-		});
-		for (const monsterId of hits.sort()) {
+		for (const monsterId of this.intersectingMonsterIds(
+			previous,
+			entity,
+			runtime,
+			context,
+		)) {
 			if (!this.hitMonster(entity, runtime, monsterId, context)) continue;
 			if (runtime.penetration <= 0) return false;
 			runtime.penetration--;
@@ -144,32 +246,23 @@ export class ProjectileBehavior extends CombatEntityBehavior {
 		context: CombatEntityUpdateContext,
 	): boolean {
 		entity.phase = 'flying';
-		const previous = { x: entity.x, z: entity.z };
+		const previous = { x: entity.x, y: entity.y, z: entity.z };
 		entity.x += runtime.velocityX * dtSeconds;
 		entity.y += runtime.velocityY * dtSeconds;
 		entity.z += runtime.velocityZ * dtSeconds;
 		if (
 			runtime.removeOnTerrainCollision &&
 			entity.y <=
-				context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset
+				context.terrainHeight(entity.x, entity.z) +
+					runtime.terrainOffset
 		)
 			return false;
-		const hits: string[] = [];
-		context.state.monsters.forEach((monster, monsterId) => {
-			if (
-				!monster.life.isDepleted() &&
-				doesMovingCircleHitCircle(
-					previous,
-					{ x: entity.x, z: entity.z },
-					runtime.collisionRadius,
-					monster,
-					0,
-				)
-			)
-				hits.push(monsterId);
-		});
-		hits.sort();
-		for (const monsterId of hits) {
+		for (const monsterId of this.intersectingMonsterIds(
+			previous,
+			entity,
+			runtime,
+			context,
+		)) {
 			if (!this.hitMonster(entity, runtime, monsterId, context)) continue;
 			if (runtime.penetration <= 0) return false;
 			runtime.penetration--;
@@ -188,10 +281,11 @@ export class PersistentZoneBehavior extends CombatEntityBehavior {
 		entity.phase = 'active';
 		entity.y =
 			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		for (const [monsterId] of this.overlappingMonsters(
+		for (const monsterId of this.intersectingMonsterIds(
+			entity,
 			entity,
 			runtime,
-			context.state,
+			context,
 		))
 			this.hitMonster(entity, runtime, monsterId, context);
 		return true;
@@ -208,14 +302,18 @@ export class StationaryProjectileBehavior extends CombatEntityBehavior {
 		if (runtime.travelRemaining > 0) {
 			entity.phase = 'flying';
 			const speed = Math.hypot(runtime.velocityX, runtime.velocityZ);
-			const distance = Math.min(runtime.travelRemaining, speed * dtSeconds);
+			const distance = Math.min(
+				runtime.travelRemaining,
+				speed * dtSeconds,
+			);
 			if (speed > 0) {
 				entity.x += (runtime.velocityX / speed) * distance;
 				entity.z += (runtime.velocityZ / speed) * distance;
 			}
 			runtime.travelRemaining -= distance;
 			entity.y =
-				context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
+				context.terrainHeight(entity.x, entity.z) +
+				runtime.terrainOffset;
 			if (runtime.travelRemaining > Number.EPSILON) return true;
 			runtime.travelRemaining = 0;
 			entity.phaseStartedAtS =
@@ -224,10 +322,11 @@ export class StationaryProjectileBehavior extends CombatEntityBehavior {
 		entity.phase = 'active';
 		entity.y =
 			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		for (const [monsterId] of this.overlappingMonsters(
+		for (const monsterId of this.intersectingMonsterIds(
+			entity,
 			entity,
 			runtime,
-			context.state,
+			context,
 		))
 			this.hitMonster(entity, runtime, monsterId, context);
 		return true;
@@ -242,10 +341,11 @@ export class TemporaryAttackBehavior extends CombatEntityBehavior {
 		context: CombatEntityUpdateContext,
 	): boolean {
 		entity.phase = 'active';
-		for (const [monsterId] of this.overlappingMonsters(
+		for (const monsterId of this.intersectingMonsterIds(
+			entity,
 			entity,
 			runtime,
-			context.state,
+			context,
 		))
 			this.hitMonster(entity, runtime, monsterId, context);
 		return true;

@@ -10,6 +10,9 @@ export interface DamageSource {
 	playerId: string;
 	weaponKind: WeaponKind;
 	combatEntityId: string;
+	directionX?: number;
+	directionZ?: number;
+	knockback?: number;
 }
 
 export interface DamageResult {
@@ -24,6 +27,14 @@ const NO_DAMAGE: Readonly<DamageResult> = Object.freeze({
 	fatal: false,
 });
 
+const KNOCKBACK_BY_WEAPON: Readonly<Record<WeaponKind, number>> = {
+	aura: 0.65,
+	sword: 3,
+	axe: 2.4,
+	staff: 1.6,
+	bow: 1.1,
+};
+
 export class DamageResolver {
 	private impactEvents: CombatImpactEvent[] = [];
 
@@ -35,6 +46,7 @@ export class DamageResolver {
 	damagePlayer(playerId: string, amount: number): DamageResult {
 		const player = this.roomState.players.get(playerId);
 		if (!player || player.life.isDepleted()) return NO_DAMAGE;
+		if (player.debugImmortal) return NO_DAMAGE;
 		if (!Number.isFinite(amount) || amount <= 0) return NO_DAMAGE;
 		const armor = Math.max(0, player.stats.armor);
 		const requested = amount * (100 / (100 + armor));
@@ -72,8 +84,31 @@ export class DamageResolver {
 		if (fatal) {
 			this.rewards.reward(source.playerId, monster, applied);
 			this.roomState.monsters.delete(monsterId);
+		} else {
+			this.applyKnockback(source, monster);
 		}
 		return { requested: amount, applied, fatal };
+	}
+
+	private applyKnockback(
+		source: DamageSource,
+		monster: { x: number; z: number },
+	): void {
+		const player = this.roomState.players.get(source.playerId);
+		if (!player) return;
+		const force =
+			source.knockback ?? KNOCKBACK_BY_WEAPON[source.weaponKind];
+		if (!Number.isFinite(force) || force <= 0) return;
+		let directionX = source.directionX ?? monster.x - player.x;
+		let directionZ = source.directionZ ?? monster.z - player.z;
+		let length = Math.hypot(directionX, directionZ);
+		if (!Number.isFinite(length) || length <= Number.EPSILON) {
+			directionX = Math.sin(player.rotationY);
+			directionZ = Math.cos(player.rotationY);
+			length = 1;
+		}
+		monster.x += (directionX / length) * force;
+		monster.z += (directionZ / length) * force;
 	}
 
 	drainImpactEvents(): CombatImpactEvent[] {

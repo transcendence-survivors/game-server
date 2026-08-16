@@ -14,6 +14,5 @@ matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 const gameServer = new Server({ transport: new BunWebSockets() });
 
 gameServer.define('game_room', GameRoom).filterBy(['roomName']);
-// gameServer.simulateLatency(1500);
 
 await gameServer.listen(Number(env.PORT ?? 4000), '0.0.0.0');

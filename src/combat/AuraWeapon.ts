@@ -2,6 +2,9 @@ import {
 	type AuraWeaponConfig,
 	type Player,
 	type WeaponState,
+	doVerticalCylindersIntersect,
+	doesSphereHitVerticalCylinder,
+	monsterHitboxPrimitives,
 } from '../../../shared-package';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 
@@ -19,14 +22,27 @@ export class AuraWeapon extends Weapon<AuraWeaponConfig> {
 		const damage = this.damage(player);
 		player.aura.radius = radius;
 		player.aura.damage = damage;
+		player.aura.height = this.config.baseHeight;
 		const combatEntityId = `aura:${this.ownerSessionId}:${this.state.activationSequence + 1}`;
-		const radiusSquared = radius * radius;
 		const hits: string[] = [];
 		context.roomState.monsters.forEach((monster, monsterId) => {
 			if (monster.life.isDepleted()) return;
-			const dx = monster.x - player.x;
-			const dz = monster.z - player.z;
-			if (dx * dx + dz * dz <= radiusSquared) hits.push(monsterId);
+			const aura = {
+				x: player.x,
+				y: player.y + player.aura.height / 2,
+				z: player.z,
+				radius,
+				height: player.aura.height,
+			};
+			if (
+				monsterHitboxPrimitives(monster, context.elapsedS).some(
+					(part) =>
+						part.shape === 'sphere'
+							? doesSphereHitVerticalCylinder(part, aura)
+							: doVerticalCylindersIntersect(aura, part),
+				)
+			)
+				hits.push(monsterId);
 		});
 		for (const monsterId of hits.sort())
 			context.damage.damageMonster(

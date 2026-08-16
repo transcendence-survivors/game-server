@@ -47,6 +47,14 @@ class TestAuraWeapon extends Weapon<AuraWeaponConfig> {
 }
 
 describe('DamageResolver', () => {
+	test('ignores player damage while debug immortality is enabled', () => {
+		const { state, player } = createCombatState();
+		player.debugImmortal = true;
+		const result = createDamageResolver(state).damagePlayer('player', 50);
+		expect(result.applied).toBe(0);
+		expect(player.life.current).toBe(player.life.max);
+	});
+
 	test('applies damage and emits its complete source', () => {
 		const { state, monster } = createCombatState();
 		const damage = createDamageResolver(state);
@@ -66,6 +74,34 @@ describe('DamageResolver', () => {
 			weaponKind: 'aura',
 			combatEntityId: 'aura:player:1',
 		});
+	});
+
+	test('applies knockback for every weapon damage source', () => {
+		const { state } = createCombatState();
+		state.monsters.delete('monster');
+		const damage = createDamageResolver(state);
+		for (const weaponKind of [
+			'aura',
+			'sword',
+			'axe',
+			'staff',
+			'bow',
+		] as const) {
+			const monster = new Monster();
+			monster.x = 2;
+			monster.life = new Life(100);
+			state.monsters.set(weaponKind, monster);
+			damage.damageMonster(
+				{
+					playerId: 'player',
+					weaponKind,
+					combatEntityId: `${weaponKind}:test`,
+				},
+				weaponKind,
+				1,
+			);
+			expect(monster.x).toBeGreaterThan(2);
+		}
 	});
 
 	test('rewards one fatal hit using applied damage for lifesteal', () => {

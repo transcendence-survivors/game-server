@@ -24,6 +24,8 @@ import {
 	MONSTER_ATTACK_RANGE,
 	BOSS_ATTACK_RANGE,
 	MONSTER_ATTACK_COOLDOWN_S,
+	PLAYER_HB_RADIUS,
+	getMonsterHitbox,
 } from '../../shared-package';
 import { DamageResolver } from './combat/DamageResolver';
 
@@ -162,7 +164,9 @@ export class MonsterManager {
 				targets[index],
 				MONSTER_MOVE_SPEED,
 				dtSeconds,
-				monster.isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE,
+				(monster.isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE) +
+					monster.hitboxRadius +
+					PLAYER_HB_RADIUS,
 			);
 			monster.rotationY = step.rotationY;
 			if (step.inRange) {
@@ -197,6 +201,12 @@ export class MonsterManager {
 		monster.life = new Life(stats.maxLife);
 		monster.damage = stats.damage;
 		monster.xpReward = stats.xpReward;
+		const hitbox = getMonsterHitbox(kind, isBoss);
+		monster.hitboxRadius = hitbox.radius;
+		monster.hitboxHeight = hitbox.height;
+		monster.hitboxOffsetX = hitbox.offsetX;
+		monster.hitboxOffsetY = hitbox.offsetY;
+		monster.hitboxOffsetZ = hitbox.offsetZ;
 		monster.x = anchor.x + Math.cos(angle) * distance;
 		monster.z = anchor.z + Math.sin(angle) * distance;
 		monster.y = this.world.height(monster.x, monster.z);

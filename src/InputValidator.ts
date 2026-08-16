@@ -5,10 +5,8 @@ import {
 	type MovementState,
 	World,
 	MAX_DT,
-	applyHorizontalMovement,
-	applyVerticalMovement,
+	simulatePlayerMovement,
 	normalizeAngle,
-	resolveTerrainCollision,
 } from '../../shared-package/';
 
 const MAX_SEQUENCE_ADVANCE = 120;
@@ -80,33 +78,19 @@ export class InputValidator {
 		};
 		const moving =
 			input.forward || input.backward || input.right || input.left;
-		const horizontal = applyHorizontalMovement(
+		const next = simulatePlayerMovement(
+			this.world,
 			current,
 			input,
-			input.cameraYaw,
 			player.stats.moveSpeed,
 		);
-		const resolved = resolveTerrainCollision(
-			this.world,
-			{ x: player.x, z: player.z },
-			{ x: horizontal.x, z: horizontal.z },
-			player.y,
-		);
-		const groundHeight = this.world.height(resolved.x, resolved.z);
-		const vertical = applyVerticalMovement(
-			current.y,
-			current.velocityY,
-			current.isGrounded,
-			groundHeight,
-			input,
-		);
 		player.animState = moving ? 'moving' : 'idle';
-		player.x = resolved.x;
-		player.y = Math.max(vertical.y, groundHeight);
-		player.z = resolved.z;
-		player.rotationY = horizontal.rotationY;
-		player.velocityY = vertical.velocityY;
-		player.isGrounded = vertical.isGrounded;
+		player.x = next.x;
+		player.y = next.y;
+		player.z = next.z;
+		player.rotationY = next.rotationY;
+		player.velocityY = next.velocityY;
+		player.isGrounded = next.isGrounded;
 		player.lastProcessedSeq = input.seq;
 		return true;
 	}

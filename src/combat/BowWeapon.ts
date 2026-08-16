@@ -41,6 +41,7 @@ export class BowWeapon extends ProjectileWeapon<BowWeaponConfig> {
 					);
 		const inputs = angles.map((degrees) => {
 			const direction = rotateVector(forward, (degrees * Math.PI) / 180);
+			const size = this.stats.sizeMultiplier(player);
 			return {
 				kind: 'arrow',
 				weaponKind: 'bow',
@@ -55,9 +56,11 @@ export class BowWeapon extends ProjectileWeapon<BowWeaponConfig> {
 				rotationY: Math.atan2(direction.x, direction.z),
 				lifetimeS,
 				damage: this.damage(player),
-				collisionRadius:
-					this.config.collisionRadius *
-					this.stats.sizeMultiplier(player),
+				collisionRadius: this.config.collisionRadius * size,
+				hitboxShape: 'box',
+				collisionWidth: this.config.hitboxWidth * size,
+				collisionHeight: this.config.hitboxHeight * size,
+				collisionDepth: this.config.hitboxDepth * size,
 				velocityX: direction.x * speed,
 				velocityZ: direction.z * speed,
 				penetration: this.stats.penetration(this.config.penetration),

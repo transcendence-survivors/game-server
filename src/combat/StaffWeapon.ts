@@ -1,7 +1,8 @@
-import type {
-	Player,
-	StaffWeaponConfig,
-	WeaponState,
+import {
+	forwardVector,
+	type Player,
+	type StaffWeaponConfig,
+	type WeaponState,
 } from '../../../shared-package';
 import { ProjectileWeapon } from './ProjectileWeapon';
 import { TargetingSystem } from './TargetingSystem';
@@ -22,8 +23,11 @@ export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
 			this.config.baseAcquisitionRange * this.rangeMultiplier(player),
 		);
 		if (!target) return false;
-		const dx = target.monster.x - player.x;
-		const dz = target.monster.z - player.z;
+		const forward = forwardVector(player.rotationY);
+		const originX = player.x + forward.x * 0.9;
+		const originZ = player.z + forward.z * 0.9;
+		const dx = target.monster.x - originX;
+		const dz = target.monster.z - originZ;
 		const length = Math.hypot(dx, dz);
 		if (length <= Number.EPSILON) return false;
 		const speed = this.stats.speed(this.config.baseProjectileSpeed);
@@ -33,15 +37,16 @@ export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
 			ownerSessionId: this.ownerSessionId,
 			behavior: 'targeted-projectile',
 			targetId: target.id,
-			x: player.x,
-			y: player.y + 1,
-			z: player.z,
+			x: originX,
+			y: player.y + 1.2,
+			z: originZ,
 			directionX: dx / length,
 			directionZ: dz / length,
 			lifetimeS: this.config.maxLifetimeS * this.durationMultiplier(),
 			damage: this.damage(player),
 			collisionRadius:
 				this.config.collisionRadius * this.stats.sizeMultiplier(player),
+			hitboxShape: 'sphere',
 			velocityX: (dx / length) * speed,
 			velocityZ: (dz / length) * speed,
 			projectileSpeed: speed,

@@ -64,6 +64,10 @@ describe('SwordWeapon', () => {
 		expect(front.life.current).toBe(82);
 		expect(edge.life.current).toBe(82);
 		expect(behind.life.current).toBe(100);
+		expect(front.x).toBeCloseTo(0);
+		expect(front.z).toBeCloseTo(6);
+		expect(Math.hypot(edge.x, edge.z)).toBeCloseTo(7);
+		expect(behind.z).toBe(-2);
 		expect(state.combatEntities.size).toBe(1);
 		expect(damage.drainImpactEvents()).toHaveLength(2);
 	});
@@ -71,7 +75,7 @@ describe('SwordWeapon', () => {
 	test('uses captured rotations for simultaneous player attacks', () => {
 		const first = setup(Math.PI / 2);
 		const secondPlayer = new Player();
-		secondPlayer.x = 10;
+		secondPlayer.x = 20;
 		secondPlayer.rotationY = -Math.PI / 2;
 		first.state.players.set('second', secondPlayer);
 		const secondState = new WeaponState();
@@ -82,7 +86,7 @@ describe('SwordWeapon', () => {
 			weaponConfigRegistry.get('sword'),
 		);
 		const firstTarget = monsterAt(first.state, 'first-target', 3, 0);
-		const secondTarget = monsterAt(first.state, 'second-target', 7, 0);
+		const secondTarget = monsterAt(first.state, 'second-target', 17, 0);
 		const context = {
 			roomState: first.state,
 			damage: first.damage,
