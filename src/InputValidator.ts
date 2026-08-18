@@ -2,17 +2,20 @@ import type { Client } from 'colyseus';
 import {
 	type GameState,
 	type MoveInput,
-	type MovementState,
+	type MovementBoundary,
 	World,
 	MAX_DT,
+	MOVE_INPUT_BOOLEAN_FIELDS,
+	PLAYER_ACCESS_RADIUS,
+	createMoveInput,
+	createMovementState,
 	simulatePlayerMovement,
 	normalizeAngle,
-} from '../../shared-package/';
+} from '@transcendence/game-shared';
 
 const MAX_SEQUENCE_ADVANCE = 120;
 const MAX_MESSAGES_PER_SECOND = 120;
 const MOVEMENT_BUDGET_CAP_S = MAX_DT * 2;
-
 interface ClientInputState {
 	windowStartedAtMs: number;
 	windowMessages: number;
@@ -22,6 +25,13 @@ interface ClientInputState {
 
 export class InputValidator {
 	private readonly clients = new Map<string, ClientInputState>();
+	private readonly nextMovement = createMovementState();
+	private readonly normalizedInput = createMoveInput();
+	private readonly movementBoundary: MovementBoundary = {
+		centerX: 0,
+		centerZ: 0,
+		radius: PLAYER_ACCESS_RADIUS,
+	};
 
 	constructor(
 		private readonly world: World,
@@ -63,26 +73,26 @@ export class InputValidator {
 		state.movementBudgetS -= deltaTime;
 		state.lastAcceptedAtMs = now;
 
-		const input: MoveInput = {
-			...message,
-			deltaTime,
-			cameraYaw: normalizeAngle(message.cameraYaw),
-		};
-		const current: MovementState = {
-			x: player.x,
-			z: player.z,
-			y: player.y,
-			rotationY: player.rotationY,
-			velocityY: player.velocityY,
-			isGrounded: player.isGrounded,
-		};
+		const input = this.normalizedInput;
+		input.seq = message.seq;
+		input.forward = message.forward;
+		input.backward = message.backward;
+		input.right = message.right;
+		input.left = message.left;
+		input.jump = message.jump;
+		input.deltaTime = deltaTime;
+		input.cameraYaw = normalizeAngle(message.cameraYaw);
 		const moving =
 			input.forward || input.backward || input.right || input.left;
+		this.movementBoundary.centerX = this.roomState.rayX;
+		this.movementBoundary.centerZ = this.roomState.rayZ;
 		const next = simulatePlayerMovement(
 			this.world,
-			current,
+			player,
 			input,
 			player.stats.moveSpeed,
+			this.nextMovement,
+			this.movementBoundary,
 		);
 		player.animState = moving ? 'moving' : 'idle';
 		player.x = next.x;
@@ -122,7 +132,7 @@ export class InputValidator {
 			Number.isFinite(input.deltaTime) &&
 			(input.deltaTime as number) > 0 &&
 			Number.isFinite(input.cameraYaw) &&
-			['forward', 'backward', 'right', 'left', 'jump'].every(
+			MOVE_INPUT_BOOLEAN_FIELDS.every(
 				(key) => typeof input[key] === 'boolean',
 			)
 		);

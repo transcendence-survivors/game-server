@@ -3,9 +3,10 @@ import {
 	GameState,
 	MAX_DT,
 	Player,
+	PLAYER_ACCESS_RADIUS,
 	World,
 	type MoveInput,
-} from '../../shared-package';
+} from '@transcendence/game-shared';
 import { InputValidator } from './InputValidator';
 
 const client = { sessionId: 'player' };
@@ -79,5 +80,16 @@ describe('InputValidator', () => {
 		);
 		expect(validator.validate(client, { ...forged, seq: 2 })).toBe(false);
 		expect(Math.hypot(player.x, player.z)).toBe(firstDistance);
+	});
+
+	test('keeps the player center inside the moving access zone', () => {
+		const { player, validator } = setup();
+		player.x = 0;
+		player.z = PLAYER_ACCESS_RADIUS - 0.05;
+
+		expect(validator.validate(client, validInput(1))).toBe(true);
+		expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
+			PLAYER_ACCESS_RADIUS + 0.000001,
+		);
 	});
 });
