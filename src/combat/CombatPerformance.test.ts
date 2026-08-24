@@ -9,10 +9,12 @@ import {
 	MONSTER_KINDS,
 	Monster,
 	Player,
+	STATE_ENCODER_BUFFER_SIZE,
+	TAU,
 	WEAPON_KINDS,
 	WeaponState,
 	weaponConfigRegistry,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { CombatSystem } from './CombatSystem';
 import { createWeaponFactory } from './createWeaponFactory';
@@ -26,8 +28,13 @@ const LOAD_BUDGET = {
 
 describe('maximum combat load', () => {
 	test('keeps four full loadouts and maximum monster population within budgets', () => {
+		Encoder.BUFFER_SIZE = STATE_ENCODER_BUFFER_SIZE;
 		const state = new GameState();
-		for (let playerIndex = 0; playerIndex < 4; playerIndex++) {
+		for (
+			let playerIndex = 0;
+			playerIndex < COMBAT_LIMITS.maxPlayers;
+			playerIndex++
+		) {
 			const player = new Player();
 			player.x = playerIndex * 0.5;
 			for (const kind of WEAPON_KINDS) {
@@ -41,7 +48,7 @@ describe('maximum combat load', () => {
 		for (let index = 0; index < MONSTER_MAX_POPULATION; index++) {
 			const monster = new Monster();
 			monster.kind = MONSTER_KINDS[index % MONSTER_KINDS.length];
-			const angle = (index / MONSTER_MAX_POPULATION) * Math.PI * 2;
+			const angle = (index / MONSTER_MAX_POPULATION) * TAU;
 			const radius = 3 + (index % 8);
 			monster.x = Math.cos(angle) * radius;
 			monster.z = Math.sin(angle) * radius;
@@ -64,6 +71,7 @@ describe('maximum combat load', () => {
 		encoder.encodeAll();
 		encoder.discardChanges();
 		let maximumPatchBytes = 0;
+		let maximumEntityCount = 0;
 		const ticks = 120;
 		const startedAt = performance.now();
 		for (let tick = 0; tick < ticks; tick++) {
@@ -74,14 +82,18 @@ describe('maximum combat load', () => {
 				maximumPatchBytes,
 				encoder.encode().byteLength,
 			);
-			encoder.discardChanges();
-			expect(state.combatEntities.size).toBeLessThanOrEqual(
-				COMBAT_LIMITS.maxCombatEntitiesPerRoom,
+			maximumEntityCount = Math.max(
+				maximumEntityCount,
+				state.combatEntities.size,
 			);
+			encoder.discardChanges();
 		}
 		const averageTickMs = (performance.now() - startedAt) / ticks;
 		expect(state.players.size).toBe(4);
 		expect(state.monsters.size).toBe(MONSTER_MAX_POPULATION);
+		expect(maximumEntityCount).toBeLessThanOrEqual(
+			COMBAT_LIMITS.maxCombatEntitiesPerRoom,
+		);
 		expect(averageTickMs).toBeLessThan(LOAD_BUDGET.averageTickMs);
 		expect(maximumPatchBytes).toBeLessThan(LOAD_BUDGET.maximumPatchBytes);
 	});

@@ -1,14 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClientArray } from 'colyseus';
-import { GameState, Life, Monster, Player } from '../../../shared-package';
+import { GameState, Life, Monster, Player } from '@transcendence/game-shared';
 import {
 	CombatEntitySystem,
 	type SpawnCombatEntity,
 } from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
+import type { MonsterSimulationSource } from '../monsters/MonsterSimulationSource';
 
-function createSystem() {
+function createSystem(monsterSimulation?: MonsterSimulationSource) {
 	const state = new GameState();
 	state.players.set('player', new Player());
 	const clients = { getById: () => undefined } as unknown as ClientArray;
@@ -16,7 +17,12 @@ function createSystem() {
 		state,
 		new KillRewardSystem(state, clients),
 	);
-	const system = new CombatEntitySystem(state, damage, () => 0);
+	const system = new CombatEntitySystem(
+		state,
+		damage,
+		() => 0,
+		monsterSimulation,
+	);
 	return { state, system };
 }
 
@@ -49,6 +55,18 @@ function addMonster(state: GameState, id: string, x: number, z = 0) {
 }
 
 describe('CombatEntitySystem', () => {
+	test('reuses one monster hitbox snapshot at the same combat time', () => {
+		const { state, system } = createSystem();
+		const monster = addMonster(state, 'target', 0, 4);
+		const first = system.monsterHitboxesAt(1).get('target')![0];
+		const repeated = system.monsterHitboxesAt(1).get('target')![0];
+		expect(repeated).toBe(first);
+		monster.x = 3;
+		const refreshed = system.monsterHitboxesAt(2).get('target')![0];
+		expect(refreshed).not.toBe(first);
+		expect(refreshed.x).toBe(3);
+	});
+
 	test('moves projectiles deterministically and detects swept collisions', () => {
 		const { state, system } = createSystem();
 		const monster = addMonster(state, 'monster', 5);
@@ -57,6 +75,36 @@ describe('CombatEntitySystem', () => {
 		system.update(1);
 		expect(monster.life.current).toBe(40);
 		expect(state.combatEntities.size).toBe(0);
+	});
+
+	test('uses exact authoritative transforms and the shared crowd index', () => {
+		const simulation: MonsterSimulationSource = {
+			readTransform(id, output) {
+				if (id !== 'monster') return false;
+				output.x = 5;
+				output.y = 0;
+				output.z = 0;
+				output.rotationY = 0;
+				return true;
+			},
+			queryRadius(_x, _z, _radius, result) {
+				result.length = 0;
+				result.push('monster');
+				return result;
+			},
+			querySwept(_start, _end, _radius, result = []) {
+				result.length = 0;
+				result.push('monster');
+				return result;
+			},
+		};
+		const { state, system } = createSystem(simulation);
+		const monster = addMonster(state, 'monster', 50);
+
+		system.spawn(projectile());
+		system.update(1);
+
+		expect(monster.life.current).toBe(40);
 	});
 
 	test('hits the visible edge of a monster hitbox', () => {
@@ -101,6 +149,24 @@ describe('CombatEntitySystem', () => {
 		expect(state.combatEntities.has(entity!.id)).toBe(true);
 		system.update(0.4);
 		expect(state.combatEntities.has(entity!.id)).toBe(false);
+	});
+
+	test('keeps contact cooldowns independent between shared behaviors', () => {
+		const { state, system } = createSystem();
+		const monster = addMonster(state, 'monster', 0);
+		monster.hitboxRadius = 3;
+		const zone = {
+			...projectile(),
+			kind: 'axe' as const,
+			weaponKind: 'axe' as const,
+			behavior: 'persistent-zone' as const,
+			velocityX: 0,
+			contactIntervalS: 1,
+		};
+		system.spawn(zone);
+		system.spawn(zone);
+		system.update(0.1);
+		expect(monster.life.current).toBe(30);
 	});
 
 	test('removes owned entities when their player leaves', () => {

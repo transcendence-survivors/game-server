@@ -1,29 +1,27 @@
 import {
 	type CombatEntity,
 	type GameState,
-	doVerticalCylindersIntersect,
-	doesHalfCylinderHitVerticalCylinder,
-	doesHalfCylinderHitSphere,
+	doesHalfCylinderHitMonsterPart,
 	doesMovingSphereHitSphere,
 	doesMovingSphereHitVerticalCylinder,
 	doesSphereHitVerticalCylinder,
 	doesSweptBoxHitSphere,
 	doesSweptBoxHitVerticalCylinder,
-	type CombatHitboxShape,
+	doesVerticalCylinderHitMonsterPart,
 	type MonsterWorldHitbox,
-	type VerticalCylinder,
-} from '../../../shared-package';
+	type Vec3d,
+} from '@transcendence/game-shared';
 import type { DamageResolver } from './DamageResolver';
-import type { MonsterSpatialIndex } from './MonsterSpatialIndex';
+import type {
+	MonsterSimulationSource,
+	MonsterSpatialQuery,
+	MonsterTransform,
+} from '../monsters/MonsterSimulationSource';
 
 export interface CombatEntityRuntime {
+	behavior: CombatEntityBehavior;
+	hitAtS?: Map<string, number>;
 	damage: number;
-	collisionRadius: number;
-	hitboxShape: CombatHitboxShape;
-	collisionHeight: number;
-	collisionWidth: number;
-	collisionDepth: number;
-	collisionHalfAngle: number;
 	velocityX: number;
 	velocityY: number;
 	velocityZ: number;
@@ -36,18 +34,112 @@ export interface CombatEntityRuntime {
 	maxTurnRateRadiansS: number;
 }
 
+type CollisionShape = Parameters<typeof doesHalfCylinderHitMonsterPart>[0];
+
 export interface CombatEntityUpdateContext {
 	state: GameState;
 	damage: DamageResolver;
 	elapsedS: number;
 	terrainHeight: (x: number, z: number) => number;
 	monsterHitboxes: ReadonlyMap<string, readonly MonsterWorldHitbox[]>;
-	monsterSpatialIndex: MonsterSpatialIndex;
+	monsterSpatialIndex: MonsterSpatialQuery;
+	monsterSimulation?: MonsterSimulationSource;
+	monsterTransform: MonsterTransform;
+	candidates: string[];
+	previous: Vec3d;
+	collisionShape: CollisionShape;
+}
+
+function doesCombatHitboxHitMonsterPart(
+	start: Vec3d,
+	hitbox: CombatEntity,
+	target: MonsterWorldHitbox,
+	shape: CollisionShape,
+): boolean {
+	switch (hitbox.hitboxShape) {
+		case 'box':
+			return target.shape === 'sphere'
+				? doesSweptBoxHitSphere(
+						start,
+						hitbox,
+						hitbox.hitboxWidth,
+						hitbox.hitboxHeight,
+						hitbox.hitboxDepth,
+						hitbox.directionX,
+						hitbox.directionZ,
+						target,
+					)
+				: doesSweptBoxHitVerticalCylinder(
+						start,
+						hitbox,
+						hitbox.hitboxWidth,
+						hitbox.hitboxHeight,
+						hitbox.hitboxDepth,
+						hitbox.directionX,
+						hitbox.directionZ,
+						target,
+					);
+		case 'cylinder':
+			return doesVerticalCylinderHitMonsterPart(shape, target);
+		case 'half-cylinder':
+			return doesHalfCylinderHitMonsterPart(shape, target);
+		case 'sphere':
+			if (target.shape === 'sphere')
+				return doesMovingSphereHitSphere(
+					start,
+					hitbox,
+					hitbox.hitboxRadius,
+					target,
+				);
+			return start === hitbox
+				? doesSphereHitVerticalCylinder(shape, target)
+				: doesMovingSphereHitVerticalCylinder(
+						start,
+						hitbox,
+						hitbox.hitboxRadius,
+						target,
+					);
+	}
+}
+
+export function collectIntersectingMonsterIds(
+	start: Vec3d,
+	hitbox: CombatEntity,
+	context: Pick<
+		CombatEntityUpdateContext,
+		'state' | 'monsterHitboxes' | 'monsterSpatialIndex' | 'collisionShape'
+	>,
+	output: string[],
+): string[] {
+	const radius =
+		hitbox.hitboxShape === 'box'
+			? Math.hypot(hitbox.hitboxWidth, hitbox.hitboxDepth) / 2
+			: hitbox.hitboxRadius;
+	context.monsterSpatialIndex.querySwept(start, hitbox, radius, output);
+	const shape = context.collisionShape;
+	shape.x = hitbox.x;
+	shape.y = hitbox.y;
+	shape.z = hitbox.z;
+	shape.radius = hitbox.hitboxRadius;
+	shape.height = hitbox.hitboxHeight;
+	shape.rotationY = hitbox.rotationY;
+	shape.halfAngle = hitbox.hitboxHalfAngle;
+	let writeIndex = 0;
+	for (const id of output) {
+		const monster = context.state.monsters.get(id);
+		const parts = context.monsterHitboxes.get(id);
+		if (!monster || monster.life.isDepleted() || !parts) continue;
+		for (const part of parts)
+			if (doesCombatHitboxHitMonsterPart(start, hitbox, part, shape)) {
+				output[writeIndex++] = id;
+				break;
+			}
+	}
+	output.length = writeIndex;
+	return output;
 }
 
 export abstract class CombatEntityBehavior {
-	protected readonly hitAtS = new Map<string, number>();
-
 	abstract update(
 		entity: CombatEntity,
 		runtime: CombatEntityRuntime,
@@ -61,7 +153,7 @@ export abstract class CombatEntityBehavior {
 		monsterId: string,
 		context: CombatEntityUpdateContext,
 	): boolean {
-		const lastHitS = this.hitAtS.get(monsterId);
+		const lastHitS = runtime.hitAtS?.get(monsterId);
 		if (
 			lastHitS !== undefined &&
 			context.elapsedS - lastHitS < runtime.contactIntervalS
@@ -72,120 +164,59 @@ export abstract class CombatEntityBehavior {
 				playerId: entity.ownerSessionId,
 				weaponKind: entity.weaponKind,
 				combatEntityId: entity.id,
-				directionX: entity.directionX,
-				directionZ: entity.directionZ,
 			},
 			monsterId,
 			runtime.damage,
 		);
 		if (result.applied <= 0) return false;
-		this.hitAtS.set(monsterId, context.elapsedS);
+		(runtime.hitAtS ??= new Map()).set(monsterId, context.elapsedS);
 		return true;
 	}
 
-	protected intersectingMonsterIds(
-		start: { x: number; y: number; z: number },
+	protected applyHits(
+		start: Vec3d,
 		entity: CombatEntity,
 		runtime: CombatEntityRuntime,
 		context: CombatEntityUpdateContext,
-	): string[] {
-		const matches: string[] = [];
-		const radius =
-			runtime.hitboxShape === 'box'
-				? Math.hypot(runtime.collisionWidth, runtime.collisionDepth) / 2
-				: runtime.collisionRadius;
-		for (const monsterId of context.monsterSpatialIndex.querySwept(
+		consumePenetration = false,
+	): boolean {
+		for (const monsterId of collectIntersectingMonsterIds(
 			start,
 			entity,
-			radius,
+			context,
+			context.candidates,
 		)) {
-			const monster = context.state.monsters.get(monsterId);
-			if (!monster || monster.life.isDepleted()) continue;
-			const hitboxes = context.monsterHitboxes.get(monsterId);
-			if (!hitboxes) continue;
-			if (
-				this.intersects(start, runtime, entity, hitboxes)
-			)
-				matches.push(monsterId);
+			if (!this.hitMonster(entity, runtime, monsterId, context)) continue;
+			if (!consumePenetration) continue;
+			if (runtime.penetration <= 0) return false;
+			runtime.penetration--;
 		}
-		return matches;
+		return true;
 	}
 
-	protected intersects(
-		start: { x: number; y: number; z: number },
-		runtime: CombatEntityRuntime,
+	protected capturePosition(
 		entity: CombatEntity,
-		targets: readonly MonsterWorldHitbox[],
+		context: CombatEntityUpdateContext,
+	): Vec3d {
+		context.previous.x = entity.x;
+		context.previous.y = entity.y;
+		context.previous.z = entity.z;
+		return context.previous;
+	}
+
+	protected activate(
+		entity: CombatEntity,
+		runtime: CombatEntityRuntime,
+		context: CombatEntityUpdateContext,
+		followTerrain = false,
 	): boolean {
-		const end = { x: entity.x, y: entity.y, z: entity.z };
-		return targets.some((target) => {
-				switch (runtime.hitboxShape) {
-					case 'box':
-						return target.shape === 'sphere'
-							? doesSweptBoxHitSphere(
-									start,
-									end,
-									runtime.collisionWidth,
-									runtime.collisionHeight,
-									runtime.collisionDepth,
-									entity.directionX,
-									entity.directionZ,
-									target,
-								)
-							: doesSweptBoxHitVerticalCylinder(
-									start,
-									end,
-									runtime.collisionWidth,
-									runtime.collisionHeight,
-									runtime.collisionDepth,
-									entity.directionX,
-									entity.directionZ,
-									target,
-								);
-					case 'cylinder':
-						const cylinder = {
-							...end,
-							radius: runtime.collisionRadius,
-							height: runtime.collisionHeight,
-						};
-						return target.shape === 'sphere'
-							? doesSphereHitVerticalCylinder(target, cylinder)
-							: doVerticalCylindersIntersect(cylinder, target);
-					case 'half-cylinder':
-						const sector = {
-							...end,
-							radius: runtime.collisionRadius,
-							height: runtime.collisionHeight,
-							rotationY: entity.rotationY,
-							halfAngle: runtime.collisionHalfAngle,
-						};
-						return target.shape === 'sphere'
-							? doesHalfCylinderHitSphere(sector, target)
-							: doesHalfCylinderHitVerticalCylinder(
-									sector,
-									target,
-								);
-					case 'sphere':
-						if (target.shape === 'sphere')
-							return doesMovingSphereHitSphere(
-								start,
-								end,
-								runtime.collisionRadius,
-								target,
-							);
-						return start === entity
-							? doesSphereHitVerticalCylinder(
-									{ ...end, radius: runtime.collisionRadius },
-									target,
-								)
-							: doesMovingSphereHitVerticalCylinder(
-									start,
-									end,
-									runtime.collisionRadius,
-									target,
-								);
-				}
-		});
+		if (followTerrain)
+			entity.y =
+				context.terrainHeight(entity.x, entity.z) +
+				runtime.terrainOffset;
+		if (runtime.damage > 0)
+			this.applyHits(entity, entity, runtime, context);
+		return true;
 	}
 }
 
@@ -196,14 +227,17 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 		dtSeconds: number,
 		context: CombatEntityUpdateContext,
 	): boolean {
-		entity.phase = 'flying';
 		const target = context.state.monsters.get(entity.targetId);
-		if (target?.life.isDepleted()) entity.targetId = '';
-		if (target && !target.life.isDepleted()) {
-			const desired = Math.atan2(
-				target.z - entity.z,
-				target.x - entity.x,
-			);
+		if (!target || target.life.isDepleted()) entity.targetId = '';
+		else {
+			const exact =
+				context.monsterSimulation?.readTransform(
+					entity.targetId,
+					context.monsterTransform,
+				) ?? false;
+			const targetX = exact ? context.monsterTransform.x : target.x;
+			const targetZ = exact ? context.monsterTransform.z : target.z;
+			const desired = Math.atan2(targetZ - entity.z, targetX - entity.x);
 			const current = Math.atan2(runtime.velocityZ, runtime.velocityX);
 			const delta = Math.atan2(
 				Math.sin(desired - current),
@@ -219,22 +253,12 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 			entity.directionX = Math.cos(heading);
 			entity.directionZ = Math.sin(heading);
 		}
-		const previous = { x: entity.x, y: entity.y, z: entity.z };
+		const previous = this.capturePosition(entity, context);
 		entity.x += runtime.velocityX * dtSeconds;
 		entity.z += runtime.velocityZ * dtSeconds;
 		entity.y =
 			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		for (const monsterId of this.intersectingMonsterIds(
-			previous,
-			entity,
-			runtime,
-			context,
-		)) {
-			if (!this.hitMonster(entity, runtime, monsterId, context)) continue;
-			if (runtime.penetration <= 0) return false;
-			runtime.penetration--;
-		}
-		return true;
+		return this.applyHits(previous, entity, runtime, context, true);
 	}
 }
 
@@ -245,8 +269,7 @@ export class ProjectileBehavior extends CombatEntityBehavior {
 		dtSeconds: number,
 		context: CombatEntityUpdateContext,
 	): boolean {
-		entity.phase = 'flying';
-		const previous = { x: entity.x, y: entity.y, z: entity.z };
+		const previous = this.capturePosition(entity, context);
 		entity.x += runtime.velocityX * dtSeconds;
 		entity.y += runtime.velocityY * dtSeconds;
 		entity.z += runtime.velocityZ * dtSeconds;
@@ -257,38 +280,22 @@ export class ProjectileBehavior extends CombatEntityBehavior {
 					runtime.terrainOffset
 		)
 			return false;
-		for (const monsterId of this.intersectingMonsterIds(
-			previous,
-			entity,
-			runtime,
-			context,
-		)) {
-			if (!this.hitMonster(entity, runtime, monsterId, context)) continue;
-			if (runtime.penetration <= 0) return false;
-			runtime.penetration--;
-		}
-		return true;
+		return this.applyHits(previous, entity, runtime, context, true);
 	}
 }
 
-export class PersistentZoneBehavior extends CombatEntityBehavior {
+export class ZoneBehavior extends CombatEntityBehavior {
+	constructor(private readonly followTerrain: boolean) {
+		super();
+	}
+
 	update(
 		entity: CombatEntity,
 		runtime: CombatEntityRuntime,
 		_dtSeconds: number,
 		context: CombatEntityUpdateContext,
 	): boolean {
-		entity.phase = 'active';
-		entity.y =
-			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		for (const monsterId of this.intersectingMonsterIds(
-			entity,
-			entity,
-			runtime,
-			context,
-		))
-			this.hitMonster(entity, runtime, monsterId, context);
-		return true;
+		return this.activate(entity, runtime, context, this.followTerrain);
 	}
 }
 
@@ -300,7 +307,6 @@ export class StationaryProjectileBehavior extends CombatEntityBehavior {
 		context: CombatEntityUpdateContext,
 	): boolean {
 		if (runtime.travelRemaining > 0) {
-			entity.phase = 'flying';
 			const speed = Math.hypot(runtime.velocityX, runtime.velocityZ);
 			const distance = Math.min(
 				runtime.travelRemaining,
@@ -316,38 +322,7 @@ export class StationaryProjectileBehavior extends CombatEntityBehavior {
 				runtime.terrainOffset;
 			if (runtime.travelRemaining > Number.EPSILON) return true;
 			runtime.travelRemaining = 0;
-			entity.phaseStartedAtS =
-				context.elapsedS - Math.max(0, dtSeconds - distance / speed);
 		}
-		entity.phase = 'active';
-		entity.y =
-			context.terrainHeight(entity.x, entity.z) + runtime.terrainOffset;
-		for (const monsterId of this.intersectingMonsterIds(
-			entity,
-			entity,
-			runtime,
-			context,
-		))
-			this.hitMonster(entity, runtime, monsterId, context);
-		return true;
-	}
-}
-
-export class TemporaryAttackBehavior extends CombatEntityBehavior {
-	update(
-		entity: CombatEntity,
-		runtime: CombatEntityRuntime,
-		_dtSeconds: number,
-		context: CombatEntityUpdateContext,
-	): boolean {
-		entity.phase = 'active';
-		for (const monsterId of this.intersectingMonsterIds(
-			entity,
-			entity,
-			runtime,
-			context,
-		))
-			this.hitMonster(entity, runtime, monsterId, context);
-		return true;
+		return this.activate(entity, runtime, context, true);
 	}
 }
