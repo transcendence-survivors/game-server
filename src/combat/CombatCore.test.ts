@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ClientArray } from 'colyseus';
 import {
+	COMBAT_LIMITS,
 	GameState,
 	Life,
 	Monster,
@@ -8,8 +9,8 @@ import {
 	WeaponState,
 	weaponConfigRegistry,
 	type AuraWeaponConfig,
-} from '../../../shared-package';
-import { DamageResolver } from './DamageResolver';
+} from '@transcendence/game-shared';
+import { DamageResolver, type DamageSource } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 import { WeaponFactory } from './WeaponFactory';
@@ -58,6 +59,15 @@ describe('DamageResolver', () => {
 	test('applies damage and emits its complete source', () => {
 		const { state, monster } = createCombatState();
 		const damage = createDamageResolver(state);
+		let transformReads = 0;
+		damage.setMonsterSimulation({
+			readTransform() {
+				transformReads++;
+				return false;
+			},
+			queryRadius: (_x, _z, _radius, result) => result,
+			querySwept: (_start, _end, _radius, result = []) => result,
+		});
 		const result = damage.damageMonster(
 			{
 				playerId: 'player',
@@ -74,6 +84,7 @@ describe('DamageResolver', () => {
 			weaponKind: 'aura',
 			combatEntityId: 'aura:player:1',
 		});
+		expect(transformReads).toBe(1);
 	});
 
 	test('applies knockback for every weapon damage source', () => {
@@ -102,9 +113,46 @@ describe('DamageResolver', () => {
 			);
 			expect(monster.x).toBeGreaterThan(2);
 		}
+		const tank = new Monster();
+		tank.x = 2;
+		tank.knockbackResistance = 1;
+		tank.life = new Life(100);
+		state.monsters.set('tank', tank);
+		damage.damageMonster(
+			{
+				playerId: 'player',
+				weaponKind: 'sword',
+				combatEntityId: 'tank-test',
+			},
+			'tank',
+			1,
+		);
+		expect(tank.x).toBe(2);
 	});
 
-	test('rewards one fatal hit using applied damage for lifesteal', () => {
+	test('always knocks monsters away from the attacking player', () => {
+		const { state, player, monster } = createCombatState();
+		player.x = 10;
+		monster.x = 8;
+		const legacyProjectileDirection = {
+			playerId: 'player',
+			weaponKind: 'bow',
+			combatEntityId: 'arrow:test',
+			directionX: 1,
+			directionZ: 0,
+		} as DamageSource & { directionX: number; directionZ: number };
+
+		createDamageResolver(state).damageMonster(
+			legacyProjectileDirection,
+			'monster',
+			1,
+		);
+
+		expect(monster.x).toBeLessThan(8);
+		expect(monster.z).toBe(0);
+	});
+
+	test('heals from every applied hit and rewards one fatal hit', () => {
 		const { state, player } = createCombatState(5);
 		player.life.takeDamage(50);
 		player.stats.lifesteal = 10;
@@ -114,12 +162,17 @@ describe('DamageResolver', () => {
 			weaponKind: 'sword' as const,
 			combatEntityId: 'slash:1',
 		};
+		const monster = state.monsters.get('monster')!;
+		monster.life.max = 20;
+		monster.life.current = 20;
+		const nonFatal = damage.damageMonster(source, 'monster', 6);
 		const first = damage.damageMonster(source, 'monster', 100);
 		const second = damage.damageMonster(source, 'monster', 100);
-		expect(first).toEqual({ requested: 100, applied: 5, fatal: true });
+		expect(nonFatal).toEqual({ requested: 6, applied: 6, fatal: false });
+		expect(first).toEqual({ requested: 100, applied: 14, fatal: true });
 		expect(second.applied).toBe(0);
 		expect(player.stats.killAmount).toBe(1);
-		expect(player.life.current).toBe(50.5);
+		expect(player.life.current).toBe(52);
 		expect(state.monsters.has('monster')).toBe(false);
 	});
 
@@ -279,11 +332,11 @@ describe('four-player combat recipe', () => {
 		const monster = new Monster();
 		monster.life = new Life(100);
 		state.monsters.set('shared-target', monster);
-		for (let index = 0; index < 4; index++)
+		for (let index = 0; index < COMBAT_LIMITS.maxPlayers; index++)
 			state.players.set(`player-${index}`, new Player());
 		const damage = createDamageResolver(state);
 		const entities = createEntities(state, damage);
-		for (let index = 0; index < 4; index++) {
+		for (let index = 0; index < COMBAT_LIMITS.maxPlayers; index++) {
 			const weaponState = new WeaponState();
 			weaponState.kind = 'aura';
 			new AuraWeapon(

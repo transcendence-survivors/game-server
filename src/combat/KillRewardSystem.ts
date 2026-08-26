@@ -3,7 +3,7 @@ import {
 	type GameState,
 	type Monster,
 	ServerMessage,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 
 export class KillRewardSystem {
 	constructor(
@@ -15,7 +15,14 @@ export class KillRewardSystem {
 		) => void,
 	) {}
 
-	reward(playerId: string, monster: Monster, appliedDamage: number): void {
+	healFromDamage(playerId: string, appliedDamage: number): void {
+		const player = this.roomState.players.get(playerId);
+		if (!player || !Number.isFinite(appliedDamage) || appliedDamage <= 0)
+			return;
+		player.life.heal(appliedDamage * (player.stats.lifesteal / 100));
+	}
+
+	reward(playerId: string, monster: Monster): void {
 		const player = this.roomState.players.get(playerId);
 		if (!player) return;
 		const previousLevel = player.experience.level;
@@ -28,6 +35,5 @@ export class KillRewardSystem {
 				client.send(ServerMessage.LevelUp);
 		}
 		player.stats.killAmount++;
-		player.life.heal(appliedDamage * (player.stats.lifesteal / 100));
 	}
 }

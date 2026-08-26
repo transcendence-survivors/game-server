@@ -2,16 +2,19 @@ import {
 	COMBAT_LIMITS,
 	type CombatImpactEvent,
 	type GameState,
+	MONSTER_DIRECTOR_CONFIG,
 	type WeaponKind,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { KillRewardSystem } from './KillRewardSystem';
+import type {
+	MonsterSimulationSource,
+	MonsterTransform,
+} from '../monsters/MonsterSimulationSource';
 
 export interface DamageSource {
 	playerId: string;
 	weaponKind: WeaponKind;
 	combatEntityId: string;
-	directionX?: number;
-	directionZ?: number;
 	knockback?: number;
 }
 
@@ -28,20 +31,50 @@ const NO_DAMAGE: Readonly<DamageResult> = Object.freeze({
 });
 
 const KNOCKBACK_BY_WEAPON: Readonly<Record<WeaponKind, number>> = {
-	aura: 0.65,
-	sword: 3,
-	axe: 2.4,
-	staff: 1.6,
-	bow: 1.1,
+	aura: 1,
+	sword: 4,
+	axe: 3.5,
+	staff: 2.6,
+	bow: 2,
 };
+
+export type MonsterKnockbackHandler = (
+	monsterId: string,
+	directionX: number,
+	directionZ: number,
+	projectionDistance: number,
+) => void;
+
+export type MonsterDeathHandler = (monsterId: string) => void;
 
 export class DamageResolver {
 	private impactEvents: CombatImpactEvent[] = [];
+	private knockbackHandler?: MonsterKnockbackHandler;
+	private monsterDeathHandler?: MonsterDeathHandler;
+	private monsterSimulation?: MonsterSimulationSource;
+	private readonly monsterTransform: MonsterTransform = {
+		x: 0,
+		y: 0,
+		z: 0,
+		rotationY: 0,
+	};
 
 	constructor(
 		private readonly roomState: GameState,
 		private readonly rewards: KillRewardSystem,
 	) {}
+
+	setKnockbackHandler(handler: MonsterKnockbackHandler): void {
+		this.knockbackHandler = handler;
+	}
+
+	setMonsterDeathHandler(handler: MonsterDeathHandler): void {
+		this.monsterDeathHandler = handler;
+	}
+
+	setMonsterSimulation(source: MonsterSimulationSource): void {
+		this.monsterSimulation = source;
+	}
 
 	damagePlayer(playerId: string, amount: number): DamageResult {
 		const player = this.roomState.players.get(playerId);
@@ -66,15 +99,28 @@ export class DamageResolver {
 		if (!monster || monster.life.isDepleted()) return NO_DAMAGE;
 		const applied = Math.min(amount, monster.life.current);
 		monster.life.takeDamage(applied);
+		this.rewards.healFromDamage(source.playerId, applied);
 		const fatal = monster.life.isDepleted();
-		if (this.impactEvents.length < COMBAT_LIMITS.maxImpactEventsPerTick) {
+		const publishImpact =
+			this.impactEvents.length < COMBAT_LIMITS.maxImpactEventsPerTick;
+		const position = this.monsterTransform;
+		if (
+			(fatal && !publishImpact) ||
+			!this.monsterSimulation?.readTransform(monsterId, position)
+		) {
+			position.x = monster.x;
+			position.y = monster.y;
+			position.z = monster.z;
+		}
+		if (publishImpact) {
 			this.impactEvents.push({
 				id: monsterId,
-				x: monster.x,
-				y: monster.y,
-				z: monster.z,
+				x: position.x,
+				y: position.y,
+				z: position.z,
 				amount: applied,
 				isBoss: monster.isBoss,
+				isElite: monster.isElite,
 				fatal,
 				sourcePlayerId: source.playerId,
 				weaponKind: source.weaponKind,
@@ -82,33 +128,61 @@ export class DamageResolver {
 			});
 		}
 		if (fatal) {
-			this.rewards.reward(source.playerId, monster, applied);
+			this.rewards.reward(source.playerId, monster);
+			this.monsterDeathHandler?.(monsterId);
 			this.roomState.monsters.delete(monsterId);
 		} else {
-			this.applyKnockback(source, monster);
+			this.applyKnockback(source, monsterId, monster, position);
 		}
 		return { requested: amount, applied, fatal };
 	}
 
 	private applyKnockback(
 		source: DamageSource,
-		monster: { x: number; z: number },
+		monsterId: string,
+		monster: { x: number; z: number; knockbackResistance?: number },
+		position: MonsterTransform,
 	): void {
 		const player = this.roomState.players.get(source.playerId);
 		if (!player) return;
 		const force =
 			source.knockback ?? KNOCKBACK_BY_WEAPON[source.weaponKind];
-		if (!Number.isFinite(force) || force <= 0) return;
-		let directionX = source.directionX ?? monster.x - player.x;
-		let directionZ = source.directionZ ?? monster.z - player.z;
+		const resistanceValue = monster.knockbackResistance;
+		const safeResistance =
+			typeof resistanceValue === 'number' &&
+			Number.isFinite(resistanceValue)
+				? resistanceValue
+				: 0;
+		const resistance = Math.min(1, Math.max(0, safeResistance));
+		const effectiveForce =
+			force *
+			Math.pow(
+				1 - resistance,
+				MONSTER_DIRECTOR_CONFIG.knockbackResistanceExponent,
+			);
+		if (!Number.isFinite(effectiveForce) || effectiveForce <= 0) return;
+		let directionX = position.x - player.x;
+		let directionZ = position.z - player.z;
 		let length = Math.hypot(directionX, directionZ);
 		if (!Number.isFinite(length) || length <= Number.EPSILON) {
 			directionX = Math.sin(player.rotationY);
 			directionZ = Math.cos(player.rotationY);
 			length = 1;
 		}
-		monster.x += (directionX / length) * force;
-		monster.z += (directionZ / length) * force;
+		directionX /= length;
+		directionZ /= length;
+		if (this.knockbackHandler) {
+			this.knockbackHandler(
+				monsterId,
+				directionX,
+				directionZ,
+				effectiveForce,
+			);
+			return;
+		}
+		// Standalone combat tests and tools may not own a MonsterManager.
+		monster.x += directionX * effectiveForce;
+		monster.z += directionZ * effectiveForce;
 	}
 
 	drainImpactEvents(): CombatImpactEvent[] {
