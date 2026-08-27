@@ -4,7 +4,7 @@ import {
 	type Player,
 	type WeaponConfig,
 	type WeaponState,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import type { DamageResolver } from './DamageResolver';
 import type { CombatEntitySystem } from './CombatEntitySystem';
 import { WeaponStatResolver } from './WeaponStatResolver';
@@ -73,8 +73,8 @@ export abstract class Weapon<TConfig extends WeaponConfig = WeaponConfig> {
 		return this.stats.rangeMultiplier(player);
 	}
 
-	protected durationMultiplier(): number {
-		return this.stats.durationMultiplier();
+	protected durationMultiplier(player: Player): number {
+		return this.stats.durationMultiplier(player);
 	}
 
 	protected abstract attack(

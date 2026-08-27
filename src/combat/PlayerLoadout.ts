@@ -1,4 +1,4 @@
-import type { Player, WeaponKind } from '../../../shared-package';
+import type { Player, WeaponKind } from '@transcendence/game-shared';
 import type { Weapon } from './Weapon';
 import type { WeaponFactory } from './WeaponFactory';
 
@@ -11,9 +11,7 @@ export class PlayerLoadout {
 	) {}
 
 	synchronize(player: Player): void {
-		const activeKinds = new Set<WeaponKind>();
 		player.weapons.forEach((state) => {
-			activeKinds.add(state.kind);
 			const current = this.weapons.get(state.kind);
 			if (!current || current.state !== state)
 				this.weapons.set(
@@ -22,11 +20,11 @@ export class PlayerLoadout {
 				);
 		});
 		for (const kind of this.weapons.keys()) {
-			if (!activeKinds.has(kind)) this.weapons.delete(kind);
+			if (!player.weapons.has(kind)) this.weapons.delete(kind);
 		}
 	}
 
-	all(): readonly Weapon[] {
-		return [...this.weapons.values()];
+	all(): IterableIterator<Weapon> {
+		return this.weapons.values();
 	}
 }

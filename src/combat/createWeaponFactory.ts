@@ -1,13 +1,7 @@
 import {
-	WEAPON_KINDS,
 	weaponConfigRegistry,
-	type AuraWeaponConfig,
-	type AxeWeaponConfig,
-	type BowWeaponConfig,
-	type StaffWeaponConfig,
-	type SwordWeaponConfig,
 	type WeaponKind,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { AuraWeapon } from './AuraWeapon';
 import { AxeWeapon } from './AxeWeapon';
 import { BowWeapon } from './BowWeapon';
@@ -15,21 +9,24 @@ import { StaffWeapon } from './StaffWeapon';
 import { SwordWeapon } from './SwordWeapon';
 import { WeaponFactory, type WeaponConstructor } from './WeaponFactory';
 
-const constructors: Record<WeaponKind, WeaponConstructor> = {
-	aura: (owner, state, config) =>
-		new AuraWeapon(owner, state, config as Readonly<AuraWeaponConfig>),
-	sword: (owner, state, config) =>
-		new SwordWeapon(owner, state, config as Readonly<SwordWeaponConfig>),
-	axe: (owner, state, config) =>
-		new AxeWeapon(owner, state, config as Readonly<AxeWeaponConfig>),
-	staff: (owner, state, config) =>
-		new StaffWeapon(owner, state, config as Readonly<StaffWeaponConfig>),
-	bow: (owner, state, config) =>
-		new BowWeapon(owner, state, config as Readonly<BowWeaponConfig>),
+type WeaponConstructors = {
+	[TKind in WeaponKind]: WeaponConstructor<TKind>;
+};
+
+const constructors: WeaponConstructors = {
+	aura: (owner, state, config) => new AuraWeapon(owner, state, config),
+	sword: (owner, state, config) => new SwordWeapon(owner, state, config),
+	axe: (owner, state, config) => new AxeWeapon(owner, state, config),
+	staff: (owner, state, config) => new StaffWeapon(owner, state, config),
+	bow: (owner, state, config) => new BowWeapon(owner, state, config),
 };
 
 export function createWeaponFactory(): WeaponFactory {
 	const factory = new WeaponFactory(weaponConfigRegistry);
-	for (const kind of WEAPON_KINDS) factory.register(kind, constructors[kind]);
+	factory.register('aura', constructors.aura);
+	factory.register('sword', constructors.sword);
+	factory.register('axe', constructors.axe);
+	factory.register('staff', constructors.staff);
+	factory.register('bow', constructors.bow);
 	return factory;
 }

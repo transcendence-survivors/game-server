@@ -3,7 +3,7 @@ import {
 	type Player,
 	type WeaponConfig,
 	type WeaponState,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 
 export class WeaponStatResolver {
 	constructor(
@@ -14,7 +14,7 @@ export class WeaponStatResolver {
 	damage(player: Player): number {
 		return (
 			this.config.baseDamage *
-			this.level().damage *
+			(1 + this.state.damageBonus) *
 			this.globalMultiplier(
 				player.stats.attackDamage / 100,
 				this.config.bonusAffinity.damage,
@@ -27,7 +27,7 @@ export class WeaponStatResolver {
 		return Math.min(
 			COMBAT_LIMITS.maxFinalAttackRate,
 			this.config.baseAttackRate *
-				this.level().attackRate *
+				(1 + this.state.attackRateBonus) *
 				this.globalMultiplier(
 					global,
 					this.config.bonusAffinity.attackRate,
@@ -38,41 +38,55 @@ export class WeaponStatResolver {
 	rangeMultiplier(player: Player): number {
 		const global = 1 + (player.stats.range - 8) / 8;
 		return (
-			this.level().range *
+			(1 + this.state.rangeBonus) *
 			this.globalMultiplier(global, this.config.bonusAffinity.range)
 		);
 	}
 
 	sizeMultiplier(player: Player): number {
-		const global = 1 + (player.stats.range - 8) / 8;
 		return (
-			(this.level().size ?? 1) *
-			this.globalMultiplier(global, this.config.bonusAffinity.size)
+			(1 + this.state.sizeBonus) *
+			this.globalMultiplier(
+				player.stats.size,
+				this.config.bonusAffinity.size,
+			)
 		);
 	}
 
-	durationMultiplier(): number {
-		return this.level().duration;
+	durationMultiplier(player: Player): number {
+		return (1 + this.state.durationBonus) * player.stats.duration;
 	}
+
+	knockbackMultiplier(): number {
+		return 1 + this.state.knockbackBonus;
+	}
+
 	speed(base: number): number {
-		return base * (this.level().speed ?? 1);
+		return base * (1 + this.state.speedBonus);
 	}
-	quantity(base: number): number {
-		return Math.max(1, Math.trunc(base + (this.level().quantity ?? 0)));
+
+	quantity(base: number, player: Player): number {
+		return Math.min(
+			COMBAT_LIMITS.maxProjectilesPerPlayer,
+			Math.max(
+				1,
+				Math.trunc(
+					base + this.state.quantityBonus + player.stats.quantity,
+				),
+			),
+		);
 	}
-	penetration(base: number): number {
-		return Math.max(0, Math.trunc(base + (this.level().penetration ?? 0)));
+
+	penetration(base: number, player: Player): number {
+		return Math.max(
+			0,
+			Math.trunc(
+				base + this.state.penetrationBonus + player.stats.penetration,
+			),
+		);
 	}
 
 	private globalMultiplier(value: number, affinity: number): number {
 		return 1 + (value - 1) * affinity;
-	}
-
-	private level() {
-		const level = Math.min(
-			Math.max(1, Math.trunc(this.state.level)),
-			this.config.maxLevel,
-		);
-		return this.config.levelScaling[level - 1];
 	}
 }
