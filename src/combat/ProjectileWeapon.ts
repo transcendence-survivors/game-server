@@ -1,23 +1,14 @@
-import type {
-	Player,
-	WeaponConfig,
-	WeaponState,
-} from '../../../shared-package';
+import type { WeaponConfig, WeaponKind } from '@transcendence/game-shared';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 
 export abstract class ProjectileWeapon<
 	TConfig extends WeaponConfig = WeaponConfig,
 > extends Weapon<TConfig> {
-	constructor(
-		ownerSessionId: string,
-		state: WeaponState,
-		config: Readonly<TConfig>,
-	) {
-		super(ownerSessionId, state, config);
-	}
-
-	protected abstract attack(
-		player: Player,
+	protected limitEntities(
 		context: WeaponAttackContext,
-	): boolean;
+		kind: WeaponKind,
+		maximum: number,
+	): void {
+		context.entities.removeOldestOwned(this.ownerSessionId, kind, maximum);
+	}
 }

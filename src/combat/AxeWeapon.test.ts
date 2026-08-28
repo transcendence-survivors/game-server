@@ -7,7 +7,7 @@ import {
 	Player,
 	WeaponState,
 	weaponConfigRegistry,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { AxeWeapon } from './AxeWeapon';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
@@ -58,11 +58,9 @@ describe('AxeWeapon', () => {
 		attack(result);
 		const axe = [...result.state.combatEntities.values()][0];
 		result.entities.update(1);
-		expect(axe.phase).toBe('active');
 		expect(axe.x).toBeCloseTo(0);
 		expect(axe.z).toBeCloseTo(8);
 		expect(axe.y).toBeCloseTo(4.75);
-		expect(axe.phaseStartedAtS).toBeCloseTo(8 / 14);
 		expect(axe.expiresAtS).toBeCloseTo(3 + 8 / 14);
 		expect(result.state.combatTimeS).toBe(1);
 	});

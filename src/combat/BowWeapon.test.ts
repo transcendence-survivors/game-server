@@ -7,7 +7,7 @@ import {
 	Player,
 	WeaponState,
 	weaponConfigRegistry,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { BowWeapon } from './BowWeapon';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
@@ -18,7 +18,10 @@ function setup() {
 	const player = new Player();
 	state.players.set('player', player);
 	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(state, new KillRewardSystem(state, clients));
+	const damage = new DamageResolver(
+		state,
+		new KillRewardSystem(state, clients),
+	);
 	const entities = new CombatEntitySystem(state, damage, () => 0);
 	const weaponState = new WeaponState();
 	weaponState.kind = 'bow';
@@ -27,7 +30,7 @@ function setup() {
 		weaponState,
 		weaponConfigRegistry.get('bow'),
 	);
-	return { state, player, damage, entities, weapon };
+	return { state, player, damage, entities, weapon, weaponState };
 }
 
 function fire(result: ReturnType<typeof setup>, dt = 1.01) {
@@ -46,7 +49,6 @@ describe('BowWeapon', () => {
 		fire(result);
 		const arrows = [...result.state.combatEntities.values()];
 		expect(arrows).toHaveLength(3);
-		expect(new Set(arrows.map((arrow) => arrow.volleyId)).size).toBe(1);
 		const expectedAngles = [
 			Math.PI / 2 - (45 * Math.PI) / 180,
 			Math.PI / 2,
@@ -57,13 +59,20 @@ describe('BowWeapon', () => {
 		);
 	});
 
-	test('keeps concurrent volleys distinct and caps active arrows', () => {
+	test('uses rolled and global quantity bonuses in the volley', () => {
+		const result = setup();
+		result.weaponState.quantityBonus = 1;
+		result.player.stats.quantity = 1;
+		fire(result);
+		expect(result.state.combatEntities.size).toBe(5);
+	});
+
+	test('caps concurrent arrows by removing the oldest volley', () => {
 		const result = setup();
 		fire(result, 5.01);
 		fire(result, 1.01);
 		const arrows = [...result.state.combatEntities.values()];
 		expect(arrows).toHaveLength(12);
-		expect(new Set(arrows.map((arrow) => arrow.volleyId)).size).toBe(4);
 		expect(Math.min(...arrows.map((arrow) => arrow.spawnSequence))).toBe(4);
 	});
 

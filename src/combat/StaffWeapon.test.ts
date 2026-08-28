@@ -7,19 +7,22 @@ import {
 	Player,
 	WeaponState,
 	weaponConfigRegistry,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
 import { StaffWeapon } from './StaffWeapon';
-import { TargetingSystem } from './TargetingSystem';
+import { nearestMonster } from './TargetingSystem';
 
 function setup() {
 	const state = new GameState();
 	const player = new Player();
 	state.players.set('player', player);
 	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(state, new KillRewardSystem(state, clients));
+	const damage = new DamageResolver(
+		state,
+		new KillRewardSystem(state, clients),
+	);
 	const entities = new CombatEntitySystem(state, damage, () => 0);
 	const weaponState = new WeaponState();
 	weaponState.kind = 'staff';
@@ -28,7 +31,7 @@ function setup() {
 		weaponState,
 		weaponConfigRegistry.get('staff'),
 	);
-	return { state, player, damage, entities, weapon };
+	return { state, player, damage, entities, weapon, weaponState };
 }
 
 function addMonster(state: GameState, id: string, x: number, z: number) {
@@ -52,11 +55,11 @@ function fire(result: ReturnType<typeof setup>) {
 describe('StaffWeapon', () => {
 	test('targets the nearest living monster and breaks ties by id', () => {
 		const result = setup();
-		addMonster(result.state, 'z', 3, 4);
-		addMonster(result.state, 'a', -3, 4);
 		const dead = addMonster(result.state, 'dead', 1, 0);
 		dead.life.current = 0;
-		expect(new TargetingSystem(result.state).nearestMonster(result.player, 5)?.id).toBe('a');
+		addMonster(result.state, 'z', 3, 4);
+		addMonster(result.state, 'a', -3, 4);
+		expect(nearestMonster(result.state, result.player, 5)?.id).toBe('a');
 	});
 
 	test('synchronizes its target and damages on guided impact', () => {
@@ -70,6 +73,14 @@ describe('StaffWeapon', () => {
 		result.entities.update(0.4);
 		expect(target.life.current).toBe(76);
 		expect(result.state.combatEntities.size).toBe(0);
+	});
+
+	test('launches additional fireballs from quantity upgrades', () => {
+		const result = setup();
+		result.weaponState.quantityBonus = 2;
+		addMonster(result.state, 'target', 0, 20);
+		fire(result);
+		expect(result.state.combatEntities.size).toBe(3);
 	});
 
 	test('continues on its last heading when the target disappears', () => {
