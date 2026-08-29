@@ -39,6 +39,7 @@ export class CombatSystem {
 				weapon.update(dtSeconds, player, this.attackContext);
 			}
 		});
+		if (this.loadouts.size === this.roomState.players.size) return;
 		for (const sessionId of this.loadouts.keys()) {
 			if (!this.roomState.players.has(sessionId))
 				this.loadouts.delete(sessionId);

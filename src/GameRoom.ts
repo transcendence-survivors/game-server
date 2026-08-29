@@ -3,6 +3,7 @@ import {
 	World,
 	COMBAT_LIMITS,
 	GAME_ROOM_TYPE,
+	GAME_ROOM_NAME_PROPERTY,
 	GameState,
 	RAY_DIR_X,
 	RAY_DIR_Z,
@@ -22,6 +23,7 @@ import {
 	toUpgradeOption,
 	normalizeRoomName,
 	type SelectUpgradeInput,
+	type GameRoomOptions,
 	type UpgradeDef,
 } from '@transcendence/game-shared';
 import { InputValidator } from './InputValidator';
@@ -31,10 +33,6 @@ import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { createWeaponFactory } from './combat/createWeaponFactory';
-
-interface GameRoomOptions {
-	roomName: string;
-}
 
 interface PlayerUpgradeProgress {
 	pending?: UpgradeDef[];
@@ -65,9 +63,13 @@ export class GameRoom extends Room<{ state: GameState }> {
 			typeof options?.roomName === 'string' ? options.roomName : '',
 		);
 		const alreadyExists = await matchMaker.query({ name: GAME_ROOM_TYPE });
-		if (alreadyExists.some((room) => room.metadata?.roomName === roomName))
+		if (
+			alreadyExists.some(
+				(room) => room.metadata?.[GAME_ROOM_NAME_PROPERTY] === roomName,
+			)
+		)
 			throw new Error('Room already exists');
-		await this.setMetadata({ roomName });
+		await this.setMetadata({ [GAME_ROOM_NAME_PROPERTY]: roomName });
 		this.maxClients = COMBAT_LIMITS.maxPlayers;
 		this.state = new GameState();
 		this.state.seed = Math.floor(Math.random() * 1e9);
@@ -125,15 +127,15 @@ export class GameRoom extends Room<{ state: GameState }> {
 			);
 			if (clamped && player.isGrounded)
 				player.y = this.world.height(player.x, player.z);
-			const client = this.clients.getById(sessionId);
 			if (
-				client &&
-				player.life.isDepleted() &&
-				!this.gameOverSent.has(sessionId)
-			) {
-				this.gameOverSent.add(sessionId);
-				client.send(ServerMessage.GameOver, { playerId: sessionId });
-			}
+				!player.life.isDepleted() ||
+				this.gameOverSent.has(sessionId)
+			)
+				return;
+			const client = this.clients.getById(sessionId);
+			if (!client) return;
+			this.gameOverSent.add(sessionId);
+			client.send(ServerMessage.GameOver, { playerId: sessionId });
 		});
 	};
 

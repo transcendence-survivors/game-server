@@ -1,4 +1,4 @@
-import type { Vec3d } from '@transcendence/game-shared';
+import type { Vec2d, Vec3d } from '@transcendence/game-shared';
 
 export interface MonsterTransform extends Vec3d {
 	rotationY: number;
@@ -12,8 +12,8 @@ export interface MonsterSpatialQuery {
 		result: string[],
 	): string[];
 	querySwept(
-		start: { x: number; z: number },
-		end: { x: number; z: number },
+		start: Vec2d,
+		end: Vec2d,
 		radius: number,
 		result?: string[],
 	): string[];

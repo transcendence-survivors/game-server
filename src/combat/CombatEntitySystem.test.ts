@@ -1,22 +1,16 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClientArray } from 'colyseus';
-import { GameState, Life, Monster, Player } from '@transcendence/game-shared';
+import {
+	addTestMonster,
+	createCombatTestContext,
+} from '../testing/CombatTestFixtures';
 import {
 	CombatEntitySystem,
 	type SpawnCombatEntity,
 } from './CombatEntitySystem';
-import { DamageResolver } from './DamageResolver';
-import { KillRewardSystem } from './KillRewardSystem';
 import type { MonsterSimulationSource } from '../monsters/MonsterSimulationSource';
 
 function createSystem(monsterSimulation?: MonsterSimulationSource) {
-	const state = new GameState();
-	state.players.set('player', new Player());
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(
-		state,
-		new KillRewardSystem(state, clients),
-	);
+	const { state, damage } = createCombatTestContext();
 	const system = new CombatEntitySystem(
 		state,
 		damage,
@@ -45,19 +39,10 @@ function projectile(
 	};
 }
 
-function addMonster(state: GameState, id: string, x: number, z = 0) {
-	const monster = new Monster();
-	monster.x = x;
-	monster.z = z;
-	monster.life = new Life(50);
-	state.monsters.set(id, monster);
-	return monster;
-}
-
 describe('CombatEntitySystem', () => {
 	test('reuses one monster hitbox snapshot at the same combat time', () => {
 		const { state, system } = createSystem();
-		const monster = addMonster(state, 'target', 0, 4);
+		const monster = addTestMonster(state, 'target', 0, 4, 50);
 		const first = system.monsterHitboxesAt(1).get('target')![0];
 		const repeated = system.monsterHitboxesAt(1).get('target')![0];
 		expect(repeated).toBe(first);
@@ -69,7 +54,7 @@ describe('CombatEntitySystem', () => {
 
 	test('moves projectiles deterministically and detects swept collisions', () => {
 		const { state, system } = createSystem();
-		const monster = addMonster(state, 'monster', 5);
+		const monster = addTestMonster(state, 'monster', 5, 0, 50);
 		const entity = system.spawn(projectile());
 		expect(entity).toBeDefined();
 		system.update(1);
@@ -99,7 +84,7 @@ describe('CombatEntitySystem', () => {
 			},
 		};
 		const { state, system } = createSystem(simulation);
-		const monster = addMonster(state, 'monster', 50);
+		const monster = addTestMonster(state, 'monster', 50, 0, 50);
 
 		system.spawn(projectile());
 		system.update(1);
@@ -109,7 +94,7 @@ describe('CombatEntitySystem', () => {
 
 	test('hits the visible edge of a monster hitbox', () => {
 		const { state, system } = createSystem();
-		const monster = addMonster(state, 'wide-monster', 5, 1.4);
+		const monster = addTestMonster(state, 'wide-monster', 5, 1.4, 50);
 		monster.hitboxRadius = 1;
 		system.spawn(projectile());
 		system.update(1);
@@ -118,8 +103,8 @@ describe('CombatEntitySystem', () => {
 
 	test('honors penetration before removing a projectile', () => {
 		const { state, system } = createSystem();
-		const first = addMonster(state, 'first', 3);
-		const second = addMonster(state, 'second', 7);
+		const first = addTestMonster(state, 'first', 3, 0, 50);
+		const second = addTestMonster(state, 'second', 7, 0, 50);
 		system.spawn(projectile({ penetration: 1 }));
 		system.update(1);
 		expect(first.life.current).toBe(40);
@@ -129,7 +114,7 @@ describe('CombatEntitySystem', () => {
 
 	test('applies persistent contact cooldowns and expires exactly', () => {
 		const { state, system } = createSystem();
-		const monster = addMonster(state, 'monster', 0);
+		const monster = addTestMonster(state, 'monster', 0, 0, 50);
 		// Garde la cible dans la zone apres le premier recul afin d'isoler ici le
 		// comportement du cooldown de contact.
 		monster.hitboxRadius = 3;
@@ -153,7 +138,7 @@ describe('CombatEntitySystem', () => {
 
 	test('keeps contact cooldowns independent between shared behaviors', () => {
 		const { state, system } = createSystem();
-		const monster = addMonster(state, 'monster', 0);
+		const monster = addTestMonster(state, 'monster', 0, 0, 50);
 		monster.hitboxRadius = 3;
 		const zone = {
 			...projectile(),

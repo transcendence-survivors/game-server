@@ -12,14 +12,14 @@ import {
 } from '@transcendence/game-shared';
 import { DamageResolver, type DamageSource } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
+import { createTestDamageResolver } from '../testing/CombatTestFixtures';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 import { WeaponFactory } from './WeaponFactory';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { AuraWeapon } from './AuraWeapon';
 
 function createDamageResolver(state: GameState): DamageResolver {
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	return new DamageResolver(state, new KillRewardSystem(state, clients));
+	return createTestDamageResolver(state);
 }
 
 function createCombatState(monsterLife: number = 50) {

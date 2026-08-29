@@ -3,15 +3,14 @@ import {
 	nextPowerOfTwoCapacity,
 	TAU,
 	type Monster,
+	type Vec2d,
 } from '@transcendence/game-shared';
 
 const MIN_CAPACITY = 32;
 const UINT32_RANGE = 0x1_0000_0000;
 
-interface SpatialCell {
+interface SpatialCell extends Vec2d {
 	key: number;
-	x: number;
-	z: number;
 	head: number;
 	tail: number;
 	count: number;
@@ -536,12 +535,13 @@ export class MonsterPbdSolver {
 		const firstLength = firstCell.count;
 		const secondLength = secondCell.count;
 		if (secondLength === 0) return;
+		const sameCell = firstCell === secondCell;
 		const firstRotation = positiveModulo(
 			this.solvePhase * 13 + firstCell.x * 7 + firstCell.z * 11,
 			firstLength,
 		);
 		const secondRotation =
-			firstCell === secondCell
+			sameCell
 				? firstRotation
 				: positiveModulo(
 						this.solvePhase * 17 +
@@ -555,7 +555,6 @@ export class MonsterPbdSolver {
 			secondRotation,
 		);
 		for (let firstStep = 0; firstStep < firstLength; firstStep++) {
-			const sameCell = firstCell === secondCell;
 			let second = sameCell
 				? this.nextCellMember(firstCell, first)
 				: rotatedSecond;

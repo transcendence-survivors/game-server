@@ -1,14 +1,17 @@
-import type { GameState, Monster, Player } from '@transcendence/game-shared';
+import type {
+	GameState,
+	Monster,
+	Player,
+	Vec2d,
+} from '@transcendence/game-shared';
 import type {
 	MonsterSimulationSource,
 	MonsterTransform,
 } from '../monsters/MonsterSimulationSource';
 
-interface TargetMatch {
+interface TargetMatch extends Vec2d {
 	id: string;
 	monster: Monster;
-	x: number;
-	z: number;
 	distanceSquared: number;
 }
 

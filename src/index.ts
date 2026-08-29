@@ -5,6 +5,7 @@ import { GameRoom } from './GameRoom';
 import { BunWebSockets } from '@colyseus/bun-websockets';
 import {
 	GAME_ROOM_TYPE,
+	GAME_ROOM_NAME_PROPERTY,
 	STATE_ENCODER_BUFFER_SIZE,
 } from '@transcendence/game-shared';
 
@@ -21,6 +22,6 @@ matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 
 const gameServer = new Server({ transport: new BunWebSockets() });
 
-gameServer.define(GAME_ROOM_TYPE, GameRoom).filterBy(['roomName']);
+gameServer.define(GAME_ROOM_TYPE, GameRoom).filterBy([GAME_ROOM_NAME_PROPERTY]);
 
 await gameServer.listen(Number(env.PORT ?? 4000), '0.0.0.0');

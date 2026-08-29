@@ -21,6 +21,7 @@ import {
 	type BossKind,
 	type MonsterDefinition,
 	type MonsterRank,
+	type Vec2d,
 	type Vec3d,
 } from '@transcendence/game-shared';
 import { DamageResolver } from './combat/DamageResolver';
@@ -31,10 +32,8 @@ import type {
 	MonsterTransform,
 } from './monsters/MonsterSimulationSource';
 
-interface PendingChildSpawn {
+interface PendingChildSpawn extends Vec2d {
 	kind: string;
-	x: number;
-	z: number;
 }
 
 const MONSTER_CATALOG: readonly MonsterDefinition[] =
@@ -521,8 +520,8 @@ export class MonsterManager implements MonsterSimulationSource {
 	}
 
 	querySwept(
-		start: { x: number; z: number },
-		end: { x: number; z: number },
+		start: Vec2d,
+		end: Vec2d,
 		radius: number,
 		result: string[] = [],
 	): string[] {

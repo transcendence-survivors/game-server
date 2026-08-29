@@ -1,30 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClientArray } from 'colyseus';
 import {
 	BOSS_KINDS,
 	BOSS_MODEL_SCALE,
 	CHUNK_DISPLAY_RADIUS,
 	type BossKind,
 	bossTimeAt,
-	GameState,
 	MONSTER_DIRECTOR_CONFIG,
 	Player,
 	targetPopulation,
 	World,
 	getMonsterHitbox,
 } from '@transcendence/game-shared';
-import { DamageResolver } from './combat/DamageResolver';
-import { KillRewardSystem } from './combat/KillRewardSystem';
+import { createCombatTestContext } from './testing/CombatTestFixtures';
 import { MonsterManager, monsterSpawnPointOnRing } from './MonsterManager';
 
 function setup(random: () => number = () => 0.25) {
-	const state = new GameState();
-	state.players.set('player', new Player());
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(
-		state,
-		new KillRewardSystem(state, clients),
-	);
+	const { state, damage } = createCombatTestContext();
 	const world = new World(1);
 	const manager = new MonsterManager(world, state, damage, random);
 	return { state, world, damage, manager };

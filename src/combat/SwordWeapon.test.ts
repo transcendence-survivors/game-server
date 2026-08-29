@@ -1,28 +1,19 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClientArray } from 'colyseus';
 import {
-	GameState,
-	Life,
-	Monster,
 	Player,
 	WeaponState,
 	weaponConfigRegistry,
 } from '@transcendence/game-shared';
+import {
+	addTestMonster,
+	createCombatTestContext,
+} from '../testing/CombatTestFixtures';
 import { CombatEntitySystem } from './CombatEntitySystem';
-import { DamageResolver } from './DamageResolver';
-import { KillRewardSystem } from './KillRewardSystem';
 import { SwordWeapon } from './SwordWeapon';
 
 function setup(rotationY = 0) {
-	const state = new GameState();
-	const player = new Player();
+	const { state, player, damage } = createCombatTestContext();
 	player.rotationY = rotationY;
-	state.players.set('player', player);
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(
-		state,
-		new KillRewardSystem(state, clients),
-	);
 	const entities = new CombatEntitySystem(state, damage, () => 0);
 	const weaponState = new WeaponState();
 	weaponState.kind = 'sword';
@@ -34,27 +25,18 @@ function setup(rotationY = 0) {
 	return { state, player, damage, entities, weapon };
 }
 
-function monsterAt(state: GameState, id: string, x: number, z: number) {
-	const monster = new Monster();
-	monster.x = x;
-	monster.z = z;
-	monster.life = new Life(100);
-	state.monsters.set(id, monster);
-	return monster;
-}
-
 describe('SwordWeapon', () => {
 	test('hits front and sector edge once but never hits behind', () => {
 		const { state, player, damage, entities, weapon } = setup();
-		const front = monsterAt(state, 'front', 0, 3);
+		const front = addTestMonster(state, 'front', 0, 3);
 		const edgeAngle = (50 * Math.PI) / 180;
-		const edge = monsterAt(
+		const edge = addTestMonster(
 			state,
 			'edge',
 			Math.sin(edgeAngle) * 4,
 			Math.cos(edgeAngle) * 4,
 		);
-		const behind = monsterAt(state, 'behind', 0, -2);
+		const behind = addTestMonster(state, 'behind', 0, -2);
 		weapon.update(0.8, player, {
 			roomState: state,
 			damage,
@@ -85,8 +67,13 @@ describe('SwordWeapon', () => {
 			secondState,
 			weaponConfigRegistry.get('sword'),
 		);
-		const firstTarget = monsterAt(first.state, 'first-target', 3, 0);
-		const secondTarget = monsterAt(first.state, 'second-target', 17, 0);
+		const firstTarget = addTestMonster(first.state, 'first-target', 3, 0);
+		const secondTarget = addTestMonster(
+			first.state,
+			'second-target',
+			17,
+			0,
+		);
 		const context = {
 			roomState: first.state,
 			damage: first.damage,

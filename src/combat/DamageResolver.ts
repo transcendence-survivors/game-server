@@ -3,6 +3,7 @@ import {
 	type CombatImpactEvent,
 	type GameState,
 	MONSTER_DIRECTOR_CONFIG,
+	type Vec2d,
 	type WeaponKind,
 } from '@transcendence/game-shared';
 import { KillRewardSystem } from './KillRewardSystem';
@@ -140,7 +141,7 @@ export class DamageResolver {
 	private applyKnockback(
 		source: DamageSource,
 		monsterId: string,
-		monster: { x: number; z: number; knockbackResistance?: number },
+		monster: Vec2d & { knockbackResistance?: number },
 		position: MonsterTransform,
 	): void {
 		const player = this.roomState.players.get(source.playerId);

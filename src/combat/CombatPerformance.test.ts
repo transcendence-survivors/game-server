@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { Encoder } from '@colyseus/schema';
-import type { ClientArray } from 'colyseus';
 import {
 	COMBAT_LIMITS,
 	GameState,
@@ -18,8 +17,7 @@ import {
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { CombatSystem } from './CombatSystem';
 import { createWeaponFactory } from './createWeaponFactory';
-import { DamageResolver } from './DamageResolver';
-import { KillRewardSystem } from './KillRewardSystem';
+import { createTestDamageResolver } from '../testing/CombatTestFixtures';
 
 const LOAD_BUDGET = {
 	averageTickMs: 20,
@@ -55,11 +53,7 @@ describe('maximum combat load', () => {
 			monster.life = new Life(1_000_000_000);
 			state.monsters.set(`monster-${index}`, monster);
 		}
-		const clients = { getById: () => undefined } as unknown as ClientArray;
-		const damage = new DamageResolver(
-			state,
-			new KillRewardSystem(state, clients),
-		);
+		const damage = createTestDamageResolver(state);
 		const entities = new CombatEntitySystem(state, damage, () => 0);
 		const combat = new CombatSystem(
 			state,

@@ -1,27 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClientArray } from 'colyseus';
+import { WeaponState, weaponConfigRegistry } from '@transcendence/game-shared';
 import {
-	GameState,
-	Life,
-	Monster,
-	Player,
-	WeaponState,
-	weaponConfigRegistry,
-} from '@transcendence/game-shared';
+	addTestMonster,
+	createCombatTestContext,
+} from '../testing/CombatTestFixtures';
 import { BowWeapon } from './BowWeapon';
 import { CombatEntitySystem } from './CombatEntitySystem';
-import { DamageResolver } from './DamageResolver';
-import { KillRewardSystem } from './KillRewardSystem';
 
 function setup() {
-	const state = new GameState();
-	const player = new Player();
-	state.players.set('player', player);
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(
-		state,
-		new KillRewardSystem(state, clients),
-	);
+	const { state, player, damage } = createCombatTestContext();
 	const entities = new CombatEntitySystem(state, damage, () => 0);
 	const weaponState = new WeaponState();
 	weaponState.kind = 'bow';
@@ -78,10 +65,7 @@ describe('BowWeapon', () => {
 
 	test('removes only the impacting arrow', () => {
 		const result = setup();
-		const monster = new Monster();
-		monster.z = 5;
-		monster.life = new Life(100);
-		result.state.monsters.set('target', monster);
+		const monster = addTestMonster(result.state, 'target', 0, 5);
 		fire(result);
 		result.entities.update(0.2);
 		expect(monster.life.current).toBe(90);

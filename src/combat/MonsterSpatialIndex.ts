@@ -1,7 +1,5 @@
 import type { MonsterWorldHitbox, Vec3d } from '@transcendence/game-shared';
 
-type Point3 = Vec3d;
-
 const MAX_CACHED_CELLS = 4096;
 
 export class MonsterSpatialIndex {
@@ -36,8 +34,8 @@ export class MonsterSpatialIndex {
 	}
 
 	querySwept(
-		start: Point3,
-		end: Point3,
+		start: Vec3d,
+		end: Vec3d,
 		radius: number,
 		result: string[] = [],
 	): string[] {

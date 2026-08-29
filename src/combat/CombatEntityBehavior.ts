@@ -248,10 +248,12 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 				Math.min(runtime.maxTurnRateRadiansS * dtSeconds, delta),
 			);
 			const heading = current + turn;
-			runtime.velocityX = Math.cos(heading) * runtime.projectileSpeed;
-			runtime.velocityZ = Math.sin(heading) * runtime.projectileSpeed;
-			entity.directionX = Math.cos(heading);
-			entity.directionZ = Math.sin(heading);
+			const directionX = Math.cos(heading);
+			const directionZ = Math.sin(heading);
+			runtime.velocityX = directionX * runtime.projectileSpeed;
+			runtime.velocityZ = directionZ * runtime.projectileSpeed;
+			entity.directionX = directionX;
+			entity.directionZ = directionZ;
 		}
 		const previous = this.capturePosition(entity, context);
 		entity.x += runtime.velocityX * dtSeconds;
@@ -307,7 +309,7 @@ export class StationaryProjectileBehavior extends CombatEntityBehavior {
 		context: CombatEntityUpdateContext,
 	): boolean {
 		if (runtime.travelRemaining > 0) {
-			const speed = Math.hypot(runtime.velocityX, runtime.velocityZ);
+			const speed = runtime.projectileSpeed;
 			const distance = Math.min(
 				runtime.travelRemaining,
 				speed * dtSeconds,

@@ -1,23 +1,14 @@
 import { expect, test } from 'bun:test';
-import type { ClientArray } from 'colyseus';
-import { GameState, Player, World } from '@transcendence/game-shared';
-import { DamageResolver } from '../combat/DamageResolver';
-import { KillRewardSystem } from '../combat/KillRewardSystem';
+import { World } from '@transcendence/game-shared';
 import { MonsterManager } from '../MonsterManager';
+import { createCombatTestContext } from '../testing/CombatTestFixtures';
 
 const SATURATED_CROWD_TICK_BUDGET_MS = 10;
 const SATURATED_IMPULSE_TICK_BUDGET_MS = 20;
 
 test('keeps a saturated PBD crowd within its server tick budget', () => {
-	const state = new GameState();
-	const player = new Player();
+	const { state, player, damage } = createCombatTestContext();
 	player.debugImmortal = true;
-	state.players.set('player', player);
-	const clients = { getById: () => undefined } as unknown as ClientArray;
-	const damage = new DamageResolver(
-		state,
-		new KillRewardSystem(state, clients),
-	);
 	const manager = new MonsterManager(new World(1), state, damage, () => 0.01);
 	manager.setStressTest(true);
 	for (let tick = 0; tick < 20; tick++) manager.update(1 / 20);

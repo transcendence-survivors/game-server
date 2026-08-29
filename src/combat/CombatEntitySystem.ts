@@ -171,9 +171,10 @@ export class CombatEntitySystem {
 				),
 			);
 		});
-		for (const id of this.monsterHitboxBuffers.keys())
-			if (!this.roomState.monsters.has(id))
-				this.monsterHitboxBuffers.delete(id);
+		if (this.monsterHitboxBuffers.size > this.roomState.monsters.size)
+			for (const id of this.monsterHitboxBuffers.keys())
+				if (!this.roomState.monsters.has(id))
+					this.monsterHitboxBuffers.delete(id);
 		return this.monsterHitboxes;
 	}
 
@@ -246,7 +247,12 @@ export class CombatEntitySystem {
 			terrainOffset: input.terrainOffset ?? 0,
 			removeOnTerrainCollision: input.removeOnTerrainCollision ?? false,
 			travelRemaining: Math.max(0, input.travelDistance ?? 0),
-			projectileSpeed: Math.max(0, input.projectileSpeed ?? 0),
+			projectileSpeed: Math.max(
+				0,
+				input.behavior === 'stationary-projectile'
+					? Math.hypot(input.velocityX ?? 0, input.velocityZ ?? 0)
+					: (input.projectileSpeed ?? 0),
+			),
 			maxTurnRateRadiansS: Math.max(0, input.maxTurnRateRadiansS ?? 0),
 		});
 		return entity;
@@ -319,9 +325,9 @@ export class CombatEntitySystem {
 	}
 
 	removeOwner(ownerSessionId: string): void {
-		const ids = this.entityIndex.owner(ownerSessionId)?.all.slice();
+		const ids = this.entityIndex.owner(ownerSessionId)?.all;
 		if (!ids) return;
-		for (const id of ids) this.remove(id);
+		while (ids.length) this.remove(ids[ids.length - 1]);
 	}
 
 	removeOldestOwned(
@@ -335,7 +341,8 @@ export class CombatEntitySystem {
 		if (!owned) return;
 		const removeCount = owned.length - maximumRemaining;
 		if (removeCount <= 0) return;
-		for (let index = 0; index < removeCount; index++) this.remove(owned[0]);
+		for (let index = removeCount - 1; index >= 0; index--)
+			this.remove(owned[index]);
 	}
 
 	private remove(id: string): void {
@@ -368,25 +375,29 @@ export class CombatEntitySystem {
 			input.lifetimeS > 0 &&
 			input.damage >= 0 &&
 			input.collisionRadius >= 0 &&
-			[
-				input.x,
-				input.y,
-				input.z,
-				input.lifetimeS,
-				input.damage,
-				input.collisionRadius,
+			Number.isFinite(input.x) &&
+			Number.isFinite(input.y) &&
+			Number.isFinite(input.z) &&
+			Number.isFinite(input.lifetimeS) &&
+			Number.isFinite(input.damage) &&
+			Number.isFinite(input.collisionRadius) &&
+			Number.isFinite(
 				input.collisionHeight ?? input.collisionRadius * 2,
+			) &&
+			Number.isFinite(
 				input.collisionWidth ?? input.collisionRadius * 2,
+			) &&
+			Number.isFinite(
 				input.collisionDepth ?? input.collisionRadius * 2,
-				input.collisionHalfAngle ?? Math.PI / 2,
-				input.velocityX ?? 0,
-				input.velocityY ?? 0,
-				input.velocityZ ?? 0,
-				input.contactIntervalS ?? 0,
-				input.travelDistance ?? 0,
-				input.projectileSpeed ?? 0,
-				input.maxTurnRateRadiansS ?? 0,
-			].every(Number.isFinite)
+			) &&
+			Number.isFinite(input.collisionHalfAngle ?? Math.PI / 2) &&
+			Number.isFinite(input.velocityX ?? 0) &&
+			Number.isFinite(input.velocityY ?? 0) &&
+			Number.isFinite(input.velocityZ ?? 0) &&
+			Number.isFinite(input.contactIntervalS ?? 0) &&
+			Number.isFinite(input.travelDistance ?? 0) &&
+			Number.isFinite(input.projectileSpeed ?? 0) &&
+			Number.isFinite(input.maxTurnRateRadiansS ?? 0)
 		);
 	}
 }

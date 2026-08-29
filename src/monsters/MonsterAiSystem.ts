@@ -224,14 +224,19 @@ export class MonsterAiSystem {
 					? 0
 					: this.transformPublishAccumulatorS % publishInterval;
 		}
-		this.targets.length = 0;
+		let targetCount = 0;
 		this.attackSlots.clear();
 		this.removals.length = 0;
 		this.removalSet.clear();
 		this.roomState.players.forEach((player, sessionId) => {
-			if (!player.life.isDepleted())
-				this.targets.push({ sessionId, player });
+			if (player.life.isDepleted()) return;
+			const target = this.targets[targetCount++];
+			if (target) {
+				target.sessionId = sessionId;
+				target.player = player;
+			} else this.targets.push({ sessionId, player });
 		});
+		this.targets.length = targetCount;
 		for (let index = 0; index < this.monsters.length; index++) {
 			const id = this.monsterIds[index];
 			const monster = this.monsters[index];
@@ -947,7 +952,7 @@ export class MonsterAiSystem {
 		targetZ: number,
 		currentY: number,
 		footprintRadius: number,
-	): { x: number; z: number } {
+	): Vec2d {
 		if (this.world.isSmoothTerrain) {
 			this.moveOutput.x = targetX;
 			this.moveOutput.z = targetZ;
