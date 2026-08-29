@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "noEmit": true
   },
-  "include": ["src", "../client/src/map", "../shared-package/src/world/World.ts", "../shared-package/src/world/Noise.ts"]
+  "include": ["src"]
 }

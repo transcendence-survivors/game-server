@@ -1,6 +1,6 @@
 import type { MonsterWorldHitbox, Vec3d } from '@transcendence/game-shared';
 
-interface Point3 extends Vec3d {}
+type Point3 = Vec3d;
 
 const MAX_CACHED_CELLS = 4096;
 
