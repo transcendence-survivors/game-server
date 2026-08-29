@@ -7,7 +7,7 @@ import {
 	Player,
 	WeaponState,
 	weaponConfigRegistry,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { CombatEntitySystem } from './CombatEntitySystem';
 import { DamageResolver } from './DamageResolver';
 import { KillRewardSystem } from './KillRewardSystem';
@@ -65,8 +65,8 @@ describe('SwordWeapon', () => {
 		expect(edge.life.current).toBe(82);
 		expect(behind.life.current).toBe(100);
 		expect(front.x).toBeCloseTo(0);
-		expect(front.z).toBeCloseTo(6);
-		expect(Math.hypot(edge.x, edge.z)).toBeCloseTo(7);
+		expect(front.z).toBeCloseTo(7);
+		expect(Math.hypot(edge.x, edge.z)).toBeCloseTo(8);
 		expect(behind.z).toBe(-2);
 		expect(state.combatEntities.size).toBe(1);
 		expect(damage.drainImpactEvents()).toHaveLength(2);

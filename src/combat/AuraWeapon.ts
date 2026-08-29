@@ -1,50 +1,39 @@
 import {
 	type AuraWeaponConfig,
+	CombatEntity,
 	type Player,
-	type WeaponState,
-	doVerticalCylindersIntersect,
-	doesSphereHitVerticalCylinder,
-	monsterHitboxPrimitives,
-} from '../../../shared-package';
+} from '@transcendence/game-shared';
 import { Weapon, type WeaponAttackContext } from './Weapon';
 
 export class AuraWeapon extends Weapon<AuraWeaponConfig> {
-	constructor(
-		ownerSessionId: string,
-		state: WeaponState,
-		config: Readonly<AuraWeaponConfig>,
-	) {
-		super(ownerSessionId, state, config);
-	}
+	private readonly targets: string[] = [];
+	private readonly hitbox = new CombatEntity();
 
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
-		const radius = this.config.baseRadius * this.rangeMultiplier(player);
+		const radius =
+			this.config.baseRadius *
+			this.rangeMultiplier(player) *
+			this.stats.sizeMultiplier(player);
 		const damage = this.damage(player);
 		player.aura.radius = radius;
-		player.aura.damage = damage;
+		player.aura.attackSpeed = this.stats.attackRate(player);
 		player.aura.height = this.config.baseHeight;
 		const combatEntityId = `aura:${this.ownerSessionId}:${this.state.activationSequence + 1}`;
-		const hits: string[] = [];
-		context.roomState.monsters.forEach((monster, monsterId) => {
-			if (monster.life.isDepleted()) return;
-			const aura = {
-				x: player.x,
-				y: player.y + player.aura.height / 2,
-				z: player.z,
-				radius,
-				height: player.aura.height,
-			};
-			if (
-				monsterHitboxPrimitives(monster, context.elapsedS).some(
-					(part) =>
-						part.shape === 'sphere'
-							? doesSphereHitVerticalCylinder(part, aura)
-							: doVerticalCylindersIntersect(aura, part),
-				)
-			)
-				hits.push(monsterId);
-		});
-		for (const monsterId of hits.sort())
+		const aura = this.hitbox;
+		aura.hitboxShape = 'cylinder';
+		aura.x = player.x;
+		aura.y = player.y + player.aura.height / 2;
+		aura.z = player.z;
+		aura.hitboxRadius = radius;
+		aura.hitboxHeight = player.aura.height;
+		const hits = this.targets;
+		context.entities.queryIntersectingMonsterIds(
+			context.elapsedS,
+			aura,
+			aura,
+			hits,
+		);
+		for (const monsterId of hits)
 			context.damage.damageMonster(
 				{
 					playerId: this.ownerSessionId,
