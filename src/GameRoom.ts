@@ -109,6 +109,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	private readonly updateSimulation = (dtMilliseconds: number): void => {
+		if (!this.state.started) return;
 		const dtSeconds = dtMilliseconds / 1000;
 		this.monsterManager.update(dtSeconds);
 		this.combatSystem.update(dtSeconds);
@@ -272,7 +273,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
 		this.gameOverSent.delete(client.sessionId);
-		client.send(ServerMessage.WorldSeed, { seed: this.world.seed });
 	}
 
 	onLeave(client: Client): void {
