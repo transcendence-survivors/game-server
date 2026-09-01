@@ -1,7 +1,16 @@
 import { env } from 'bun';
 import { matchMaker, Server } from 'colyseus';
+import { Encoder } from '@colyseus/schema';
 import { GameRoom } from './GameRoom';
 import { BunWebSockets } from '@colyseus/bun-websockets';
+import {
+	GAME_ROOM_TYPE,
+	GAME_ROOM_NAME_PROPERTY,
+	STATE_ENCODER_BUFFER_SIZE,
+} from '@transcendence/game-shared';
+
+// The denser director can legitimately exceed schema's default 8 KB snapshot.
+Encoder.BUFFER_SIZE = STATE_ENCODER_BUFFER_SIZE;
 
 matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 	'Access-Control-Allow-Origin': reqHeaders.get('origin') || '*',
@@ -13,7 +22,6 @@ matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 
 const gameServer = new Server({ transport: new BunWebSockets() });
 
-gameServer.define('game_room', GameRoom).filterBy(['roomName']);
-// gameServer.simulateLatency(1500);
+gameServer.define(GAME_ROOM_TYPE, GameRoom).filterBy([GAME_ROOM_NAME_PROPERTY]);
 
 await gameServer.listen(Number(4000), '0.0.0.0');

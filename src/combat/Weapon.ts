@@ -1,0 +1,89 @@
+import {
+	COMBAT_LIMITS,
+	type GameState,
+	type Player,
+	type WeaponConfig,
+	type WeaponState,
+} from '@transcendence/game-shared';
+import type { DamageResolver } from './DamageResolver';
+import type { CombatEntitySystem } from './CombatEntitySystem';
+import { WeaponStatResolver } from './WeaponStatResolver';
+
+export interface WeaponAttackContext {
+	roomState: GameState;
+	damage: DamageResolver;
+	entities: CombatEntitySystem;
+	elapsedS: number;
+}
+
+export abstract class Weapon<TConfig extends WeaponConfig = WeaponConfig> {
+	private cooldownS: number;
+	private lastPeriodS: number;
+	protected readonly stats: WeaponStatResolver;
+
+	constructor(
+		readonly ownerSessionId: string,
+		readonly state: WeaponState,
+		readonly config: Readonly<TConfig>,
+	) {
+		this.stats = new WeaponStatResolver(config, state);
+		this.lastPeriodS = this.periodS();
+		this.cooldownS = this.lastPeriodS;
+	}
+
+	update(
+		dtSeconds: number,
+		player: Player,
+		context: WeaponAttackContext,
+	): void {
+		if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
+		if (player.life.isDepleted()) return;
+		const period = this.periodS(player);
+		if (!Number.isFinite(period) || period <= 0) return;
+		if (period !== this.lastPeriodS) {
+			this.cooldownS = (this.cooldownS / this.lastPeriodS) * period;
+			this.lastPeriodS = period;
+		}
+		this.cooldownS -= dtSeconds;
+		let attacks = 0;
+		while (
+			this.cooldownS <= 0 &&
+			attacks < COMBAT_LIMITS.maxCatchupAttacksPerTick
+		) {
+			if (!this.attack(player, context)) {
+				this.cooldownS = 0;
+				return;
+			}
+			this.state.activationSequence++;
+			this.cooldownS += period;
+			attacks++;
+		}
+		if (
+			attacks >= COMBAT_LIMITS.maxCatchupAttacksPerTick &&
+			this.cooldownS <= 0
+		)
+			this.cooldownS = period;
+	}
+
+	protected damage(player: Player): number {
+		return this.stats.damage(player);
+	}
+
+	protected rangeMultiplier(player: Player): number {
+		return this.stats.rangeMultiplier(player);
+	}
+
+	protected durationMultiplier(player: Player): number {
+		return this.stats.durationMultiplier(player);
+	}
+
+	protected abstract attack(
+		player: Player,
+		context: WeaponAttackContext,
+	): boolean;
+
+	private periodS(player?: Player): number {
+		const attackRate = this.stats.attackRate(player);
+		return 1 / attackRate;
+	}
+}
