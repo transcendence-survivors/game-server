@@ -272,7 +272,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
 		this.gameOverSent.delete(client.sessionId);
-		client.send(ServerMessage.WorldSeed, { seed: this.world.seed });
 	}
 
 	onLeave(client: Client): void {
