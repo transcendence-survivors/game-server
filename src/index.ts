@@ -9,7 +9,6 @@ import {
 	STATE_ENCODER_BUFFER_SIZE,
 } from '@transcendence/game-shared';
 
-// The denser director can legitimately exceed schema's default 8 KB snapshot.
 Encoder.BUFFER_SIZE = STATE_ENCODER_BUFFER_SIZE;
 
 matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
