@@ -1,4 +1,3 @@
-import { env } from 'bun';
 import { matchMaker, Server } from 'colyseus';
 import { Encoder } from '@colyseus/schema';
 import { GameRoom } from './GameRoom';
