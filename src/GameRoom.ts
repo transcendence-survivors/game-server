@@ -165,6 +165,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			if (allReady) {
 				this.state.started = true;
 				this.broadcast('gameStart', { seed: this.world.seed });
+				this.lock();
 			}
 		});
 		this.onMessage(
@@ -249,6 +250,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	onJoin(client: Client): void {
+		if (this.state.started) return;
 		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
