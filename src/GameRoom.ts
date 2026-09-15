@@ -41,6 +41,7 @@ interface PlayerUpgradeProgress {
 }
 
 const SIMULATION_INTERVAL_MS = 50;
+const RECONNECT_TIMEOUT = 30;
 
 function readEnabledFlag(message: unknown): boolean | undefined {
 	if (typeof message !== 'object' || message === null) return undefined;
@@ -106,6 +107,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 			SIMULATION_INTERVAL_MS,
 		);
 		this.registerMessageHandlers();
+	}
+
+	onDispose(): void {
+		console.log(`[GameRoom ${this.roomId}] disposed`);
 	}
 
 	private readonly updateSimulation = (dtMilliseconds: number): void => {
@@ -277,13 +282,34 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.gameOverSent.delete(client.sessionId);
 	}
 
-	onLeave(client: Client): void {
-		this.upgradeProgress.delete(client.sessionId);
-		this.inputValidator.removeClient(client.sessionId);
-		this.combatEntitySystem.removeOwner(client.sessionId);
-		this.combatSystem.removePlayer(client.sessionId);
-		this.gameOverSent.delete(client.sessionId);
-		this.state.players.delete(client.sessionId);
+	async onLeave(client: Client, code?: number) {
+		const consented = code == 1000;
+
+		if (consented) {
+			this.upgradeProgress.delete(client.sessionId);
+			this.inputValidator.removeClient(client.sessionId);
+			this.combatEntitySystem.removeOwner(client.sessionId);
+			this.combatSystem.removePlayer(client.sessionId);
+			this.gameOverSent.delete(client.sessionId);
+			this.state.players.delete(client.sessionId);
+			return;
+		}
+
+		try {
+			const newClient = await this.allowReconnection(
+				client,
+				RECONNECT_TIMEOUT,
+			);
+			console.log(`${newClient.sessionId} reconnected`);
+		} catch (error) {
+			console.warn(`${client.sessionId} did not reconnect in time`);
+			this.upgradeProgress.delete(client.sessionId);
+			this.inputValidator.removeClient(client.sessionId);
+			this.combatEntitySystem.removeOwner(client.sessionId);
+			this.combatSystem.removePlayer(client.sessionId);
+			this.gameOverSent.delete(client.sessionId);
+			this.state.players.delete(client.sessionId);
+		}
 	}
 
 	private sendUpgradeOptions(client: Client, options: UpgradeDef[]): void {
