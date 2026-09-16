@@ -39,7 +39,6 @@ interface PendingChildSpawn extends Vec2d {
 const MONSTER_CATALOG: readonly MonsterDefinition[] =
 	Object.values(MONSTER_DEFINITIONS);
 
-/** Returns an exact point on the shared outer chunk-loading ring. */
 export function monsterSpawnPointOnRing(
 	world: World,
 	centerX: number,
@@ -56,10 +55,6 @@ export function monsterSpawnPointOnRing(
 	return point;
 }
 
-/**
- * Owns monster population, pacing and lifecycle. Individual behavior lives in
- * MonsterAiSystem; all balance values come from the shared catalog/config.
- */
 export class MonsterManager implements MonsterSimulationSource {
 	private elapsedS = 0;
 	private spawnBudget = 0;
@@ -133,7 +128,6 @@ export class MonsterManager implements MonsterSimulationSource {
 		this.flushChildSpawns(this.pendingChildSpawns, false);
 	}
 
-	/** Enables a debug-only saturated population without changing normal pacing. */
 	setStressTest(enabled: boolean): void {
 		this.stressTestEnabled = enabled;
 		this.nextSpawnUnlockS = 0;

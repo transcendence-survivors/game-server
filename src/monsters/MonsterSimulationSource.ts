@@ -19,7 +19,6 @@ export interface MonsterSpatialQuery {
 	): string[];
 }
 
-/** Exact server simulation state, independent from Colyseus publication. */
 export interface MonsterSimulationSource extends MonsterSpatialQuery {
 	readTransform(monsterId: string, output: MonsterTransform): boolean;
 }

@@ -39,13 +39,6 @@ export interface MonsterPbdStats {
 	spatialIndexRebuilt: boolean;
 }
 
-/**
- * Bounded iterative PBD solver backed by compact reusable buffers.
- *
- * The broad phase retains clean local contacts and refreshes only dirty cells.
- * Every PBD iteration re-evaluates penetration from current positions without
- * rescanning the grid. No client state participates.
- */
 export class MonsterPbdSolver {
 	private capacity = 0;
 	private solvePhase = 0;
@@ -540,15 +533,12 @@ export class MonsterPbdSolver {
 			this.solvePhase * 13 + firstCell.x * 7 + firstCell.z * 11,
 			firstLength,
 		);
-		const secondRotation =
-			sameCell
-				? firstRotation
-				: positiveModulo(
-						this.solvePhase * 17 +
-							secondCell.x * 11 +
-							secondCell.z * 7,
-						secondLength,
-					);
+		const secondRotation = sameCell
+			? firstRotation
+			: positiveModulo(
+					this.solvePhase * 17 + secondCell.x * 11 + secondCell.z * 7,
+					secondLength,
+				);
 		let first = this.rotatedCellMember(firstCell, firstRotation);
 		const rotatedSecond = this.rotatedCellMember(
 			secondCell,

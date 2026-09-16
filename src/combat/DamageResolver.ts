@@ -181,7 +181,6 @@ export class DamageResolver {
 			);
 			return;
 		}
-		// Standalone combat tests and tools may not own a MonsterManager.
 		monster.x += directionX * effectiveForce;
 		monster.z += directionZ * effectiveForce;
 	}

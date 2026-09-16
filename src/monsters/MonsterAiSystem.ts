@@ -26,7 +26,6 @@ interface Target {
 
 type SpawnChild = (kind: string, x: number, z: number) => void;
 
-/** Server-side movement and behavior system for every living monster. */
 export class MonsterAiSystem {
 	private readonly targets: Target[] = [];
 	private readonly monsterIds: string[] = [];
