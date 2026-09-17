@@ -41,7 +41,7 @@ interface PlayerUpgradeProgress {
 }
 
 const SIMULATION_INTERVAL_MS = 50;
-const RECONNECT_TIMEOUT = 30;
+const RECONNECT_TIMEOUT = 60;
 
 function readEnabledFlag(message: unknown): boolean | undefined {
 	if (typeof message !== 'object' || message === null) return undefined;
