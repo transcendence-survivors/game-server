@@ -26,6 +26,7 @@ import {
 	type GameRoomOptions,
 	type UpgradeDef,
 } from '@transcendence/game-shared';
+import { DownedSystem } from './DownedSystem';
 import { InputValidator } from './InputValidator';
 import { MonsterManager } from './MonsterManager';
 import { DamageResolver } from './combat/DamageResolver';
@@ -56,8 +57,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private monsterManager!: MonsterManager;
 	private combatSystem!: CombatSystem;
 	private combatEntitySystem!: CombatEntitySystem;
+	private downedSystem!: DownedSystem;
 	private readonly upgradeProgress = new Map<string, PlayerUpgradeProgress>();
-	private readonly gameOverSent = new Set<string>();
+	private gameOverSent = false;
 
 	async onCreate(options: GameRoomOptions): Promise<void> {
 		const roomName = normalizeRoomName(
@@ -102,6 +104,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			createWeaponFactory(),
 			this.combatEntitySystem,
 		);
+		this.downedSystem = new DownedSystem(this.state);
 		this.setSimulationInterval(
 			this.updateSimulation,
 			SIMULATION_INTERVAL_MS,
@@ -124,7 +127,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.state.rayX += RAY_DIR_X * RAY_SPEED * dtSeconds;
 		this.state.rayZ += RAY_DIR_Z * RAY_SPEED * dtSeconds;
 		this.state.rayY = this.world.height(this.state.rayX, this.state.rayZ);
-		this.state.players.forEach((player, sessionId) => {
+		this.downedSystem.update(dtSeconds);
+		this.state.players.forEach((player) => {
 			const clamped = clampPositionToCircle(
 				player,
 				this.state.rayX,
@@ -133,13 +137,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 			);
 			if (clamped && player.isGrounded)
 				player.y = this.world.height(player.x, player.z);
-			if (!player.life.isDepleted() || this.gameOverSent.has(sessionId))
-				return;
-			const client = this.clients.getById(sessionId);
-			if (!client) return;
-			this.gameOverSent.add(sessionId);
-			client.send(ServerMessage.GameOver, { playerId: sessionId });
 		});
+		if (this.gameOverSent || !this.downedSystem.allPlayersDowned()) return;
+		this.gameOverSent = true;
+		this.broadcast(ServerMessage.GameOver);
 	};
 
 	private registerMessageHandlers(): void {
@@ -183,6 +184,15 @@ export class GameRoom extends Room<{ state: GameState }> {
 				)
 					return;
 				this.monsterManager.setStressTest(enabled);
+			},
+		);
+		this.onMessage(
+			ClientMessage.Revive,
+			(client: Client, message: unknown) => {
+				const enabled = readEnabledFlag(message);
+				if (!this.state.players.has(client.sessionId)) return;
+				if (enabled === undefined) return;
+				this.downedSystem.setReviveIntent(client.sessionId, enabled);
 			},
 		);
 		this.onMessage(ClientMessage.RequestUpgradeOptions, (client) =>
@@ -279,18 +289,17 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.y = spawn.y;
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
-		this.gameOverSent.delete(client.sessionId);
 	}
 
 	async onLeave(client: Client, code?: number) {
 		const consented = code == 1000;
+		this.downedSystem.removePlayer(client.sessionId);
 
 		if (consented) {
 			this.upgradeProgress.delete(client.sessionId);
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
-			this.gameOverSent.delete(client.sessionId);
 			this.state.players.delete(client.sessionId);
 			return;
 		}
@@ -307,7 +316,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
-			this.gameOverSent.delete(client.sessionId);
 			this.state.players.delete(client.sessionId);
 		}
 	}

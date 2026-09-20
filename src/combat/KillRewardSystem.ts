@@ -19,6 +19,7 @@ export class KillRewardSystem {
 		const player = this.roomState.players.get(playerId);
 		if (!player || !Number.isFinite(appliedDamage) || appliedDamage <= 0)
 			return;
+		if (player.isDowned || player.life.isDepleted()) return;
 		player.life.heal(appliedDamage * (player.stats.lifesteal / 100));
 	}
 
