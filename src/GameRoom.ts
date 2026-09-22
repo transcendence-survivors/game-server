@@ -264,7 +264,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		progress.availableChoices = Math.max(0, progress.availableChoices - 1);
 	}
 
-	onJoin(client: Client): void {
+	onJoin(client: Client, options: GameRoomOptions): void {
 		if (this.state.started) return;
 		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
@@ -280,6 +280,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const player = new Player();
 		player.id = (index + 1) as 1 | 2 | 3 | 4;
 		player.aura.radius = 0;
+		player.username = options.user.username;
+		player.userId = options.user.userId;
+		player.avatarUrl = options.user.avatarUrl || '';
 		for (const kind of STARTER_WEAPON_KINDS) {
 			const weapon = new WeaponState();
 			weapon.kind = kind;
