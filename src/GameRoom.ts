@@ -34,6 +34,7 @@ import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { createWeaponFactory } from './combat/createWeaponFactory';
+import { GameStats, weaponKindMap } from './upload';
 
 interface PlayerUpgradeProgress {
 	pending?: UpgradeDef[];
@@ -42,7 +43,7 @@ interface PlayerUpgradeProgress {
 }
 
 const SIMULATION_INTERVAL_MS = 50;
-const RECONNECT_TIMEOUT = 60;
+const RECONNECT_TIMEOUT = 30;
 
 function readEnabledFlag(message: unknown): boolean | undefined {
 	if (typeof message !== 'object' || message === null) return undefined;
@@ -112,12 +113,33 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.registerMessageHandlers();
 	}
 
+	private createStats(): GameStats {
+		return {
+			survivalTime: this.state.combatTimeS,
+			players: Array.from(this.state.players).map((player) => {
+				const p = player[1];
+				return {
+					...p.stats,
+					weapons: Array.from(p.weapons).map((weapon) => {
+						const w = weapon[1];
+						return { level: w.level, kind: weaponKindMap[w.kind] };
+					}),
+				};
+			}),
+		};
+	}
+
 	onDispose(): void {
+		const data = this.createStats();
+		console.log(data);
 		console.log(`[GameRoom ${this.roomId}] disposed`);
 	}
 
 	private readonly updateSimulation = (dtMilliseconds: number): void => {
 		if (!this.state.started) return;
+		if (this.state.players.size <= 0) {
+			this.disconnect();
+		}
 		const dtSeconds = dtMilliseconds / 1000;
 		this.monsterManager.update(dtSeconds);
 		this.combatSystem.update(dtSeconds);
@@ -141,6 +163,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		if (this.gameOverSent || !this.downedSystem.allPlayersDowned()) return;
 		this.gameOverSent = true;
 		this.broadcast(ServerMessage.GameOver);
+		this.disconnect();
 	};
 
 	private registerMessageHandlers(): void {

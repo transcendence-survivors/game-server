@@ -8,7 +8,13 @@ import {
 	STATE_ENCODER_BUFFER_SIZE,
 } from '@transcendence/game-shared';
 
+export const { API_INTERNAL, JWT_GAME_TOKEN_SECRET } = process.env;
+
+if (!API_INTERNAL || !JWT_GAME_TOKEN_SECRET) throw new Error('missing env');
+
 Encoder.BUFFER_SIZE = STATE_ENCODER_BUFFER_SIZE;
+
+export const GAME_SECRET = new TextEncoder().encode(JWT_GAME_TOKEN_SECRET);
 
 matchMaker.controller.getCorsHeaders = (reqHeaders) => ({
 	'Access-Control-Allow-Origin': reqHeaders.get('origin') || '*',

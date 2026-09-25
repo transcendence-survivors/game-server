@@ -16,7 +16,8 @@
 		"@colyseus/bun-websockets": "^0.17.13",
 		"@colyseus/schema": "^4.0.26",
 		"@transcendence/game-shared": "workspace:*",
-		"colyseus": "^0.17.10"
+		"colyseus": "^0.17.10",
+		"jose": "^6.2.12"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.1.18",
