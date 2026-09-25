@@ -307,6 +307,11 @@ export class GameRoom extends Room<{ state: GameState }> {
 			return;
 		}
 
+		if (this.state.players.size === 1 && !this.state.started) {
+			this.state.players.delete(client.sessionId);
+			this.disconnect();
+		}
+
 		try {
 			const newClient = await this.allowReconnection(
 				client,
