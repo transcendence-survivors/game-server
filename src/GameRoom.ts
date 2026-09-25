@@ -292,6 +292,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.y = spawn.y;
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
+		client.send('initSeq', player.lastProcessedSeq);
 	}
 
 	async onLeave(client: Client, code?: number) {
@@ -319,6 +320,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 				RECONNECT_TIMEOUT,
 			);
 			console.log(`${newClient.sessionId} reconnected`);
+			const player = this.state.players.get(newClient.sessionId);
+			if (player) newClient.send('initSeq', player.lastProcessedSeq);
 		} catch (error) {
 			console.warn(`${client.sessionId} did not reconnect in time`);
 			this.upgradeProgress.delete(client.sessionId);
