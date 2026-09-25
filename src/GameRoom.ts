@@ -310,6 +310,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		if (this.state.players.size === 1 && !this.state.started) {
 			this.state.players.delete(client.sessionId);
 			this.disconnect();
+			return;
 		}
 
 		try {
