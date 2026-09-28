@@ -25,6 +25,7 @@ import {
 	type SelectUpgradeInput,
 	type GameRoomOptions,
 	type UpgradeDef,
+	PlayerStats,
 } from '@transcendence/game-shared';
 import { DownedSystem } from './DownedSystem';
 import { InputValidator } from './InputValidator';
@@ -34,7 +35,7 @@ import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { createWeaponFactory } from './combat/createWeaponFactory';
-import { GameStats, weaponKindMap } from './upload';
+import { GameStats, uploadStats, weaponKindMap } from './upload';
 
 interface PlayerUpgradeProgress {
 	pending?: UpgradeDef[];
@@ -114,24 +115,35 @@ export class GameRoom extends Room<{ state: GameState }> {
 	}
 
 	private createStats(): GameStats {
+		const all = [
+			...this.state.players.values(),
+			...this.state.inactivePlayers.values(),
+		];
 		return {
-			survivalTime: this.state.combatTimeS,
-			players: Array.from(this.state.inactivePlayers).map((player) => {
-				const p = player[1];
-				return {
-					...p.stats,
-					weapons: Array.from(p.weapons).map((weapon) => {
-						const w = weapon[1];
-						return { level: w.level, kind: weaponKindMap[w.kind] };
-					}),
-				};
-			}),
+			survivalTime: Math.trunc(this.state.combatTimeS),
+			players: all.map((p) => ({
+				...this.sanitizeStats(p.stats),
+				weapons: Array.from(p.weapons.values()).map((w) => ({
+					level: w.level,
+					kind: weaponKindMap[w.kind],
+				})),
+			})),
 		};
 	}
 
-	onDispose(): void {
+	async onDispose() {
+		if (!this.state.started) return;
 		const data = this.createStats();
-		console.log(data);
+		if (data.players.length === 0) return;
+		try {
+			console.log(data);
+			await uploadStats(data);
+		} catch (error) {
+			console.error(
+				`[GameRoom ${this.roomId}] stats upload failed:`,
+				error,
+			);
+		}
 		console.log(`[GameRoom ${this.roomId}] disposed`);
 	}
 
@@ -139,6 +151,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		if (!this.state.started) return;
 		if (this.state.players.size <= 0) {
 			this.disconnect();
+			return;
 		}
 		const dtSeconds = dtMilliseconds / 1000;
 		this.monsterManager.update(dtSeconds);
@@ -316,6 +329,26 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.z = spawn.z;
 		this.state.players.set(client.sessionId, player);
 		client.send('initSeq', player.lastProcessedSeq);
+	}
+
+	private sanitizeStats(s: PlayerStats) {
+		const round2 = (n: number) => Math.round(n * 100) / 100;
+		return {
+			maxHealth: Math.round(s.maxHealth),
+			armor: Math.round(s.armor),
+			attackDamage: Math.round(s.attackDamage),
+			killAmount: Math.round(s.killAmount),
+			quantity: Math.round(s.quantity),
+
+			attackSpeed: round2(s.attackSpeed),
+			moveSpeed: round2(s.moveSpeed),
+			luck: round2(s.luck),
+			lifesteal: round2(s.lifesteal),
+			range: round2(s.range),
+			size: round2(s.size),
+			duration: round2(s.duration),
+			penetration: round2(s.penetration),
+		};
 	}
 
 	private deleteAndSavePlayer(client: Client) {

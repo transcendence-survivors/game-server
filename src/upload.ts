@@ -46,7 +46,7 @@ export interface PlayerStats {
 }
 
 export async function uploadStats(gameStats: GameStats) {
-	const token = await new SignJWT()
+	const token = await new SignJWT({ type: 'game-server' })
 		.setProtectedHeader({ alg: 'HS256' })
 		.setIssuedAt()
 		.setExpirationTime('60s')
@@ -61,8 +61,10 @@ export async function uploadStats(gameStats: GameStats) {
 		body: JSON.stringify(gameStats),
 	});
 
+	console.log('Uploading to', `${API_INTERNAL}/game`);
+
 	if (!response.ok) {
-		const errorText = await response.text;
+		const errorText = await response.text();
 		throw new Error(
 			`Failed to upload match results: ${response.status} - ${errorText}`,
 		);
