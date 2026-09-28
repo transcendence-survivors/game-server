@@ -29,6 +29,7 @@ export interface Weapon {
 }
 
 export interface PlayerStats {
+	userId: string;
 	maxHealth: number;
 	attackSpeed: number;
 	moveSpeed: number;

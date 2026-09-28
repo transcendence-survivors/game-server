@@ -122,6 +122,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		return {
 			survivalTime: Math.trunc(this.state.combatTimeS),
 			players: all.map((p) => ({
+				userId: p.userId,
 				...this.sanitizeStats(p.stats),
 				weapons: Array.from(p.weapons.values()).map((w) => ({
 					level: w.level,
