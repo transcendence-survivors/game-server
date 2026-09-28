@@ -116,7 +116,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private createStats(): GameStats {
 		return {
 			survivalTime: this.state.combatTimeS,
-			players: Array.from(this.state.players).map((player) => {
+			players: Array.from(this.state.inactivePlayers).map((player) => {
 				const p = player[1];
 				return {
 					...p.stats,
@@ -318,6 +318,12 @@ export class GameRoom extends Room<{ state: GameState }> {
 		client.send('initSeq', player.lastProcessedSeq);
 	}
 
+	private deleteAndSavePlayer(client: Client) {
+		const player = this.state.players.get(client.sessionId);
+		this.state.players.delete(client.sessionId);
+		if (player) this.state.inactivePlayers.set(client.sessionId, player);
+	}
+
 	async onLeave(client: Client, code?: number) {
 		const consented = code == 1000;
 		this.downedSystem.removePlayer(client.sessionId);
@@ -327,7 +333,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
-			this.state.players.delete(client.sessionId);
+			this.deleteAndSavePlayer(client);
 			return;
 		}
 
@@ -351,7 +357,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
-			this.state.players.delete(client.sessionId);
+			this.deleteAndSavePlayer(client);
 		}
 	}
 
