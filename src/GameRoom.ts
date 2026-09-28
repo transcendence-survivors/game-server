@@ -360,9 +360,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	async onLeave(client: Client, code?: number) {
 		const consented = code == 1000;
-		this.downedSystem.removePlayer(client.sessionId);
 
 		if (consented) {
+			this.downedSystem.removePlayer(client.sessionId);
 			this.upgradeProgress.delete(client.sessionId);
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
