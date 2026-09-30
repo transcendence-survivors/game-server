@@ -36,5 +36,6 @@ export class KillRewardSystem {
 				client.send(ServerMessage.LevelUp);
 		}
 		player.stats.killAmount++;
+		this.roomState.totalKills++;
 	}
 }
