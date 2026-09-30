@@ -1,6 +1,6 @@
 import { SignJWT } from 'jose';
 import { API_INTERNAL, GAME_SECRET } from '.';
-import { WeaponKind } from '@transcendence/game-shared';
+import { TomeId, WeaponKind } from '@transcendence/game-shared';
 
 export enum WeaponKindUpload {
 	AURA = 'AURA',
@@ -8,6 +8,39 @@ export enum WeaponKindUpload {
 	AXE = 'AXE',
 	SWORD = 'SWORD',
 	STAFF = 'STAFF',
+}
+
+export enum TomeKindUpload {
+	DAMAGE = 'DAMAGE',
+	COOLDOWN = 'COOLDOWN',
+	AGILITY = 'AGILITY',
+	VITALITY = 'VITALITY',
+	ARMOR = 'ARMOR',
+	BLOOD = 'BLOOD',
+	RANGE = 'RANGE',
+	SIZE = 'SIZE',
+	DURATION = 'DURATION',
+	QUANTITY = 'QUANTITY',
+	FORTUNE = 'FORTUNE',
+}
+
+export const tomeKindMap: Record<TomeId, TomeKindUpload> = {
+	damage: TomeKindUpload.DAMAGE,
+	cooldown: TomeKindUpload.COOLDOWN,
+	agility: TomeKindUpload.AGILITY,
+	vitality: TomeKindUpload.VITALITY,
+	armor: TomeKindUpload.ARMOR,
+	blood: TomeKindUpload.BLOOD,
+	range: TomeKindUpload.RANGE,
+	size: TomeKindUpload.SIZE,
+	duration: TomeKindUpload.DURATION,
+	quantity: TomeKindUpload.QUANTITY,
+	fortune: TomeKindUpload.FORTUNE,
+};
+
+export interface Tome {
+	kind: TomeKindUpload;
+	level: number;
 }
 
 export const weaponKindMap: Record<WeaponKind, WeaponKindUpload> = {
@@ -44,6 +77,7 @@ export interface PlayerStats {
 	quantity: number;
 	penetration: number;
 	weapons: Weapon[];
+	tomes: Tome[];
 }
 
 export async function uploadStats(gameStats: GameStats) {

@@ -26,6 +26,7 @@ import {
 	type GameRoomOptions,
 	type UpgradeDef,
 	PlayerStats,
+	TomeId,
 } from '@transcendence/game-shared';
 import { DownedSystem } from './DownedSystem';
 import { InputValidator } from './InputValidator';
@@ -35,7 +36,7 @@ import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { createWeaponFactory } from './combat/createWeaponFactory';
-import { GameStats, uploadStats, weaponKindMap } from './upload';
+import { GameStats, tomeKindMap, uploadStats, weaponKindMap } from './upload';
 import { StarterWeaponKind } from '../../shared-package/src/utils/Constants';
 
 interface PlayerUpgradeProgress {
@@ -128,6 +129,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 				weapons: Array.from(p.weapons.values()).map((w) => ({
 					level: w.level,
 					kind: weaponKindMap[w.kind],
+				})),
+				tomes: Array.from(p.stats.tomeLevels, ([id, level]) => ({
+					level,
+					kind: tomeKindMap[id as TomeId],
 				})),
 			})),
 		};
