@@ -36,6 +36,7 @@ import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
 import { createWeaponFactory } from './combat/createWeaponFactory';
 import { GameStats, uploadStats, weaponKindMap } from './upload';
+import { StarterWeaponKind } from '../../shared-package/src/utils/Constants';
 
 interface PlayerUpgradeProgress {
 	pending?: UpgradeDef[];
@@ -301,6 +302,14 @@ export class GameRoom extends Room<{ state: GameState }> {
 		progress.availableChoices = Math.max(0, progress.availableChoices - 1);
 	}
 
+	private pickStarterWeapon(
+		rng: () => number = Math.random,
+	): StarterWeaponKind {
+		return STARTER_WEAPON_KINDS[
+			Math.floor(rng() * STARTER_WEAPON_KINDS.length)
+		];
+	}
+
 	onJoin(client: Client, options: GameRoomOptions): void {
 		if (this.state.started) return;
 		const index = this.state.players.size;
@@ -320,11 +329,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 		player.username = options.user.displayName;
 		player.userId = options.user.userId;
 		player.avatarUrl = options.user.avatarUrl || '';
-		for (const kind of STARTER_WEAPON_KINDS) {
-			const weapon = new WeaponState();
-			weapon.kind = kind;
-			player.weapons.set(weapon.kind, weapon);
-		}
+		const weapon = new WeaponState();
+		weapon.kind = this.pickStarterWeapon();
+		player.weapons.set(weapon.kind, weapon);
 		player.x = spawn.x;
 		player.y = spawn.y;
 		player.z = spawn.z;
