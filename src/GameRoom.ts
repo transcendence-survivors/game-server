@@ -317,7 +317,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const player = new Player();
 		player.id = (index + 1) as 1 | 2 | 3 | 4;
 		player.aura.radius = 0;
-		player.username = options.user.username;
+		player.username = options.user.displayName;
 		player.userId = options.user.userId;
 		player.avatarUrl = options.user.avatarUrl || '';
 		for (const kind of STARTER_WEAPON_KINDS) {
