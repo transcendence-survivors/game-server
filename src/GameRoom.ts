@@ -46,7 +46,7 @@ interface PlayerUpgradeProgress {
 }
 
 const SIMULATION_INTERVAL_MS = 50;
-const RECONNECT_TIMEOUT = 60;
+const RECONNECT_TIMEOUT = 40;
 
 function readEnabledFlag(message: unknown): boolean | undefined {
 	if (typeof message !== 'object' || message === null) return undefined;
@@ -388,12 +388,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
 			this.deleteAndSavePlayer(client);
-			return;
-		}
-
-		if (this.state.players.size === 1 && !this.state.started) {
-			this.state.players.delete(client.sessionId);
-			this.disconnect();
 			return;
 		}
 
