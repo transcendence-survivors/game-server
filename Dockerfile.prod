@@ -1,0 +1,63 @@
+# ---------------------------------------------------
+# 1. Base Stage
+# ---------------------------------------------------
+FROM oven/bun:1-alpine AS base
+WORKDIR /app
+
+# ---------------------------------------------------
+# 2. Dependencies Stage
+# ---------------------------------------------------
+FROM base AS deps
+WORKDIR /app
+
+# Copy root files
+COPY package.json ./
+
+# Copy nested package manifests and lockfiles from their correct subfolders
+COPY apps/game/server/package.json ./apps/game/server/package.json
+COPY apps/game/server/bun.lock ./apps/game/server/bun.lock
+COPY apps/game/shared-package/package.json ./apps/game/shared-package/package.json
+
+# Move into the game-server directory to run bun install against its lockfile
+WORKDIR /app/apps/game/server
+RUN bun install --frozen-lockfile
+
+# ---------------------------------------------------
+# 3. Builder Stage
+# ---------------------------------------------------
+FROM base AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/game/server/node_modules ./apps/game/server/node_modules
+COPY --from=deps /app/apps/game/shared-package/node_modules ./apps/game/shared-package/node_modules
+
+COPY apps/game/server ./apps/game/server
+COPY apps/game/shared-package ./apps/game/shared-package
+COPY package.json ./
+
+WORKDIR /app/apps/game/server
+RUN bun install --production --frozen-lockfile
+
+# ---------------------------------------------------
+# 4. Production Runner Stage
+# ---------------------------------------------------
+FROM oven/bun:1-alpine AS production
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 bunjs && \
+    adduser --system --uid 1001 bunuser
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/game/server ./apps/game/server
+COPY --from=builder /app/apps/game/shared-package ./apps/game/shared-package
+
+USER bunuser
+
+WORKDIR /app/apps/game/server
+
+EXPOSE 4000
+
+CMD ["bun", "run", "src/index.ts"]
