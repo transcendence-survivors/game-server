@@ -1,4 +1,4 @@
-import { Client, matchMaker, Room } from 'colyseus';
+import { Client, matchMaker, Room, ServerError } from 'colyseus';
 import {
 	World,
 	COMBAT_LIMITS,
@@ -315,16 +315,24 @@ export class GameRoom extends Room<{ state: GameState }> {
 		];
 	}
 
+	onAuth(client: Client, options: GameRoomOptions) {
+		const userId = options?.user?.userId;
+		if (!userId) throw new ServerError(4001, 'Missing user');
+		const alreadyConnected = [...this.state.players.values()].some(
+			(p) => p.userId === userId,
+		);
+		if (alreadyConnected)
+			throw new ServerError(4000, 'Player already exists');
+		return true;
+	}
+
+	onReconnect(client: Client) {
+		console.log('SUUUUU', client.sessionId);
+	}
+
 	onJoin(client: Client, options: GameRoomOptions): void {
+		console.log('ESPUMA', client.sessionId);
 		if (this.state.started) return;
-		let alreadyConnected = false;
-		this.state.players.forEach((player) => {
-			if (player.userId === options.user.userId) alreadyConnected = true;
-		});
-		if (alreadyConnected) {
-			client.leave();
-			return;
-		}
 		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
@@ -396,9 +404,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 				client,
 				RECONNECT_TIMEOUT,
 			);
+			const newPlayer = this.state.players.get(newClient.sessionId);
 			console.log(`${newClient.sessionId} reconnected`);
-			const player = this.state.players.get(newClient.sessionId);
-			if (player) newClient.send('initSeq', player.lastProcessedSeq);
+			if (newPlayer)
+				newClient.send('initSeq', newPlayer.lastProcessedSeq);
 		} catch (error) {
 			console.warn(`${client.sessionId} did not reconnect in time`);
 			this.upgradeProgress.delete(client.sessionId);
