@@ -317,6 +317,14 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	onJoin(client: Client, options: GameRoomOptions): void {
 		if (this.state.started) return;
+		let alreadyConnected = false;
+		this.state.players.forEach((player) => {
+			if (player.userId === options.user.userId) alreadyConnected = true;
+		});
+		if (alreadyConnected) {
+			client.leave();
+			return;
+		}
 		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
