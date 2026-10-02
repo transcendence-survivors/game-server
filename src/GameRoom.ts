@@ -1,4 +1,4 @@
-import { Client, matchMaker, Room, ServerError } from 'colyseus';
+import { Client, matchMaker, Room } from 'colyseus';
 import {
 	World,
 	COMBAT_LIMITS,
@@ -156,6 +156,10 @@ export class GameRoom extends Room<{ state: GameState }> {
 
 	private readonly updateSimulation = (dtMilliseconds: number): void => {
 		if (!this.state.started) return;
+		if (this.state.players.size <= 0) {
+			this.disconnect();
+			return;
+		}
 		const dtSeconds = dtMilliseconds / 1000;
 		this.monsterManager.update(dtSeconds);
 		this.combatSystem.update(dtSeconds);
@@ -311,20 +315,16 @@ export class GameRoom extends Room<{ state: GameState }> {
 		];
 	}
 
-	onAuth(client: Client, options: GameRoomOptions) {
-		const userId = options?.user?.userId;
-		if (!userId) throw new ServerError(4001, 'Missing user');
-		const alreadyConnected = [...this.state.players.values()].some(
-			(p) => p.userId === userId,
-		);
-		if (alreadyConnected)
-			throw new ServerError(4000, 'Player already exists');
-		return true;
-	}
-
 	onJoin(client: Client, options: GameRoomOptions): void {
-		console.log('ESPUMA', client.sessionId);
 		if (this.state.started) return;
+		let alreadyConnected = false;
+		this.state.players.forEach((player) => {
+			if (player.userId === options.user.userId) alreadyConnected = true;
+		});
+		if (alreadyConnected) {
+			client.leave();
+			return;
+		}
 		const index = this.state.players.size;
 		const spread = index === 0 ? 0 : this.world.CELL * 2;
 		const angle = index * (Math.PI / 2);
@@ -378,16 +378,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 		if (player) this.state.inactivePlayers.set(client.sessionId, player);
 	}
 
-	onReconnect(client: Client) {
-		console.log('SUUUUU', client.sessionId);
-		if (!this.state.inactivePlayers.has(client.sessionId)) {
-			client.leave(4005);
-		}
-	}
-
 	async onLeave(client: Client, code?: number) {
 		const consented = code == 1000;
-		this.deleteAndSavePlayer(client);
 
 		if (consented) {
 			this.downedSystem.removePlayer(client.sessionId);
@@ -395,6 +387,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.inputValidator.removeClient(client.sessionId);
 			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
+			this.deleteAndSavePlayer(client);
 			return;
 		}
 
@@ -403,15 +396,9 @@ export class GameRoom extends Room<{ state: GameState }> {
 				client,
 				RECONNECT_TIMEOUT,
 			);
-			const newPlayer = this.state.inactivePlayers.get(
-				newClient.sessionId,
-			);
 			console.log(`${newClient.sessionId} reconnected`);
-			if (newPlayer) {
-				this.state.inactivePlayers.delete(newClient.sessionId);
-				this.state.players.set(newClient.sessionId, newPlayer);
-				newClient.send('initSeq', newPlayer.lastProcessedSeq);
-			}
+			const player = this.state.players.get(newClient.sessionId);
+			if (player) newClient.send('initSeq', player.lastProcessedSeq);
 		} catch (error) {
 			console.warn(`${client.sessionId} did not reconnect in time`);
 			this.upgradeProgress.delete(client.sessionId);
