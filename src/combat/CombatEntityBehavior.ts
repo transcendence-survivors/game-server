@@ -284,17 +284,13 @@ export class ProjectileBehavior extends CombatEntityBehavior {
 }
 
 export class ZoneBehavior extends CombatEntityBehavior {
-	constructor(private readonly followTerrain: boolean) {
-		super();
-	}
-
 	update(
 		entity: CombatEntity,
 		runtime: CombatEntityRuntime,
 		_dtSeconds: number,
 		context: CombatEntityUpdateContext,
 	): boolean {
-		return this.activate(entity, runtime, context, this.followTerrain);
+		return this.activate(entity, runtime, context, false);
 	}
 }
 

@@ -29,7 +29,6 @@ import {
 
 type CombatEntityBehaviorKind =
 	| 'projectile'
-	| 'persistent-zone'
 	| 'stationary-projectile'
 	| 'targeted-projectile'
 	| 'temporary-attack';
@@ -69,10 +68,9 @@ interface MonsterHitboxBuffers {
 
 const BEHAVIORS = {
 	projectile: new ProjectileBehavior(),
-	'persistent-zone': new ZoneBehavior(true),
 	'stationary-projectile': new StationaryProjectileBehavior(),
 	'targeted-projectile': new TargetedProjectileBehavior(),
-	'temporary-attack': new ZoneBehavior(false),
+	'temporary-attack': new ZoneBehavior(),
 } as const;
 
 export class CombatEntitySystem {
