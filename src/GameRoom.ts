@@ -143,7 +143,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		const data = this.createStats();
 		if (data.players.length === 0) return;
 		try {
-			console.log(data);
 			await uploadStats(data);
 		} catch (error) {
 			console.error(

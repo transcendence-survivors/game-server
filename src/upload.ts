@@ -96,8 +96,6 @@ export async function uploadStats(gameStats: GameStats) {
 		body: JSON.stringify(gameStats),
 	});
 
-	console.log('Uploading to', `${API_INTERNAL}/game`);
-
 	if (!response.ok) {
 		const errorText = await response.text();
 		throw new Error(
