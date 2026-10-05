@@ -4,10 +4,9 @@ import {
 	type Player,
 } from '@transcendence/game-shared';
 import type { SpawnCombatEntity } from './CombatEntitySystem';
-import { ProjectileWeapon } from './ProjectileWeapon';
-import type { WeaponAttackContext } from './Weapon';
+import { Weapon, type WeaponAttackContext } from './Weapon';
 
-export class BowWeapon extends ProjectileWeapon<BowWeaponConfig> {
+export class BowWeapon extends Weapon<BowWeaponConfig> {
 	private readonly inputs: SpawnCombatEntity[] = [];
 	private readonly forward = { x: 0, z: 0 };
 

@@ -14,7 +14,6 @@ import {
 import type { DamageResolver } from './DamageResolver';
 import type {
 	MonsterSimulationSource,
-	MonsterSpatialQuery,
 	MonsterTransform,
 } from '../monsters/MonsterSimulationSource';
 
@@ -42,8 +41,7 @@ export interface CombatEntityUpdateContext {
 	elapsedS: number;
 	terrainHeight: (x: number, z: number) => number;
 	monsterHitboxes: ReadonlyMap<string, readonly MonsterWorldHitbox[]>;
-	monsterSpatialIndex: MonsterSpatialQuery;
-	monsterSimulation?: MonsterSimulationSource;
+	monsterSimulation: MonsterSimulationSource;
 	monsterTransform: MonsterTransform;
 	candidates: string[];
 	previous: Vec3d;
@@ -107,7 +105,7 @@ export function collectIntersectingMonsterIds(
 	hitbox: CombatEntity,
 	context: Pick<
 		CombatEntityUpdateContext,
-		'state' | 'monsterHitboxes' | 'monsterSpatialIndex' | 'collisionShape'
+		'state' | 'monsterHitboxes' | 'monsterSimulation' | 'collisionShape'
 	>,
 	output: string[],
 ): string[] {
@@ -115,7 +113,7 @@ export function collectIntersectingMonsterIds(
 		hitbox.hitboxShape === 'box'
 			? Math.hypot(hitbox.hitboxWidth, hitbox.hitboxDepth) / 2
 			: hitbox.hitboxRadius;
-	context.monsterSpatialIndex.querySwept(start, hitbox, radius, output);
+	context.monsterSimulation.querySwept(start, hitbox, radius, output);
 	const shape = context.collisionShape;
 	shape.x = hitbox.x;
 	shape.y = hitbox.y;
@@ -230,11 +228,10 @@ export class TargetedProjectileBehavior extends CombatEntityBehavior {
 		const target = context.state.monsters.get(entity.targetId);
 		if (!target || target.life.isDepleted()) entity.targetId = '';
 		else {
-			const exact =
-				context.monsterSimulation?.readTransform(
-					entity.targetId,
-					context.monsterTransform,
-				) ?? false;
+			const exact = context.monsterSimulation.readTransform(
+				entity.targetId,
+				context.monsterTransform,
+			);
 			const targetX = exact ? context.monsterTransform.x : target.x;
 			const targetZ = exact ? context.monsterTransform.z : target.z;
 			const desired = Math.atan2(targetZ - entity.z, targetX - entity.x);

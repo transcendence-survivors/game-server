@@ -3,6 +3,7 @@ import {
 	type GameState,
 	type Player,
 	type WeaponConfig,
+	type WeaponKind,
 	type WeaponState,
 } from '@transcendence/game-shared';
 import type { DamageResolver } from './DamageResolver';
@@ -75,6 +76,14 @@ export abstract class Weapon<TConfig extends WeaponConfig = WeaponConfig> {
 
 	protected durationMultiplier(player: Player): number {
 		return this.stats.durationMultiplier(player);
+	}
+
+	protected limitEntities(
+		context: WeaponAttackContext,
+		kind: WeaponKind,
+		maximum: number,
+	): void {
+		context.entities.removeOldestOwned(this.ownerSessionId, kind, maximum);
 	}
 
 	protected abstract attack(

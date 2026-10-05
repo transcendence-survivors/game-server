@@ -1,7 +1,6 @@
 import type { GameState } from '@transcendence/game-shared';
 import type { DamageResolver } from './DamageResolver';
 import { PlayerLoadout } from './PlayerLoadout';
-import type { WeaponFactory } from './WeaponFactory';
 import type { CombatEntitySystem } from './CombatEntitySystem';
 import type { WeaponAttackContext } from './Weapon';
 
@@ -13,7 +12,6 @@ export class CombatSystem {
 	constructor(
 		private readonly roomState: GameState,
 		damage: DamageResolver,
-		private readonly factory: WeaponFactory,
 		entities: CombatEntitySystem,
 	) {
 		this.attackContext = {
@@ -31,7 +29,7 @@ export class CombatSystem {
 		this.roomState.players.forEach((player, sessionId) => {
 			let loadout = this.loadouts.get(sessionId);
 			if (!loadout) {
-				loadout = new PlayerLoadout(sessionId, this.factory);
+				loadout = new PlayerLoadout(sessionId);
 				this.loadouts.set(sessionId, loadout);
 			}
 			loadout.synchronize(player);

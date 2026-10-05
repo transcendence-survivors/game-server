@@ -1,16 +1,14 @@
 import { type AxeWeaponConfig, type Player } from '@transcendence/game-shared';
-import { ProjectileWeapon } from './ProjectileWeapon';
-import type { WeaponAttackContext } from './Weapon';
+import { Weapon, type WeaponAttackContext } from './Weapon';
 import { nearestMonster } from './TargetingSystem';
 
-export class AxeWeapon extends ProjectileWeapon<AxeWeaponConfig> {
+export class AxeWeapon extends Weapon<AxeWeaponConfig> {
 	private readonly targets: string[] = [];
 
 	protected attack(player: Player, context: WeaponAttackContext): boolean {
 		const maximumDistance =
 			this.config.baseTravelDistance * this.rangeMultiplier(player);
 		context.entities.queryMonsterIdsInRadius(
-			context.elapsedS,
 			player.x,
 			player.z,
 			maximumDistance,

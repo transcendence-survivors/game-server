@@ -3,11 +3,10 @@ import {
 	type Player,
 	type StaffWeaponConfig,
 } from '@transcendence/game-shared';
-import { ProjectileWeapon } from './ProjectileWeapon';
 import { nearestMonster } from './TargetingSystem';
-import type { WeaponAttackContext } from './Weapon';
+import { Weapon, type WeaponAttackContext } from './Weapon';
 
-export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
+export class StaffWeapon extends Weapon<StaffWeaponConfig> {
 	private readonly targets: string[] = [];
 	private readonly forward = { x: 0, z: 0 };
 
@@ -15,7 +14,6 @@ export class StaffWeapon extends ProjectileWeapon<StaffWeaponConfig> {
 		const acquisitionRange =
 			this.config.baseAcquisitionRange * this.rangeMultiplier(player);
 		context.entities.queryMonsterIdsInRadius(
-			context.elapsedS,
 			player.x,
 			player.z,
 			acquisitionRange,

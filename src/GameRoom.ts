@@ -35,7 +35,6 @@ import { DamageResolver } from './combat/DamageResolver';
 import { KillRewardSystem } from './combat/KillRewardSystem';
 import { CombatEntitySystem } from './combat/CombatEntitySystem';
 import { CombatSystem } from './combat/CombatSystem';
-import { createWeaponFactory } from './combat/createWeaponFactory';
 import { GameStats, tomeKindMap, uploadStats, weaponKindMap } from './upload';
 import { StarterWeaponKind } from '../../shared-package/src/utils/Constants';
 
@@ -105,7 +104,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.combatSystem = new CombatSystem(
 			this.state,
 			this.damageResolver,
-			createWeaponFactory(),
 			this.combatEntitySystem,
 		);
 		this.downedSystem = new DownedSystem(this.state);

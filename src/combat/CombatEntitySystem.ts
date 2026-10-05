@@ -13,10 +13,8 @@ import {
 } from '@transcendence/game-shared';
 import type { DamageResolver } from './DamageResolver';
 import { CombatEntityIndex } from './CombatEntityIndex';
-import { MonsterSpatialIndex } from './MonsterSpatialIndex';
 import type {
 	MonsterSimulationSource,
-	MonsterSpatialQuery,
 	MonsterTransform,
 } from '../monsters/MonsterSimulationSource';
 import {
@@ -84,14 +82,12 @@ export class CombatEntitySystem {
 		string,
 		MonsterHitboxBuffers
 	>();
-	private readonly monsterSpatialIndex = new MonsterSpatialIndex();
 	private readonly entityIndex = new CombatEntityIndex();
 	private readonly pendingOwnerCounts = new Map<string, number>();
 	private readonly singleSpawn: SpawnCombatEntity[] = [];
 	private readonly updateContext: CombatEntityUpdateContext;
 	private monsterHitboxTimeS = Number.NaN;
 	private monsterHitboxBufferIndex = 0;
-	private monsterSpatialIndexTimeS = Number.NaN;
 	private elapsedS = 0;
 	private nextSequence = 1;
 	private readonly monsterTransform: MonsterTransform = {
@@ -105,7 +101,7 @@ export class CombatEntitySystem {
 		private readonly roomState: GameState,
 		damage: DamageResolver,
 		terrainHeight: (x: number, z: number) => number,
-		readonly monsterSimulation?: MonsterSimulationSource,
+		readonly monsterSimulation: MonsterSimulationSource,
 	) {
 		this.updateContext = {
 			state: roomState,
@@ -113,7 +109,6 @@ export class CombatEntitySystem {
 			elapsedS: 0,
 			terrainHeight,
 			monsterHitboxes: this.monsterHitboxes,
-			monsterSpatialIndex: this.monsterSpatialIndex,
 			monsterSimulation,
 			monsterTransform: this.monsterTransform,
 			candidates: [],
@@ -155,11 +150,10 @@ export class CombatEntitySystem {
 				buffers = { posed: [], world: [[], []] };
 				this.monsterHitboxBuffers.set(id, buffers);
 			}
-			const exact =
-				this.monsterSimulation?.readTransform(
-					id,
-					this.monsterTransform,
-				) ?? false;
+			const exact = this.monsterSimulation.readTransform(
+				id,
+				this.monsterTransform,
+			);
 			this.monsterHitboxes.set(
 				id,
 				monsterHitboxPrimitives(
@@ -179,18 +173,12 @@ export class CombatEntitySystem {
 	}
 
 	queryMonsterIdsInRadius(
-		elapsedS: number,
 		x: number,
 		z: number,
 		radius: number,
 		output: string[],
 	): void {
-		this.prepareMonsterSpatialIndex(elapsedS).queryRadius(
-			x,
-			z,
-			radius,
-			output,
-		);
+		this.monsterSimulation.queryRadius(x, z, radius, output);
 	}
 
 	queryIntersectingMonsterIds(
@@ -352,21 +340,9 @@ export class CombatEntitySystem {
 		this.roomState.combatEntities.delete(id);
 	}
 
-	private prepareMonsterSpatialIndex(elapsedS: number): MonsterSpatialQuery {
-		if (this.monsterSimulation) return this.monsterSimulation;
-		const hitboxes = this.monsterHitboxesAt(elapsedS);
-		if (elapsedS !== this.monsterSpatialIndexTimeS) {
-			this.monsterSpatialIndexTimeS = elapsedS;
-			this.monsterSpatialIndex.rebuild(hitboxes);
-		}
-		return this.monsterSpatialIndex;
-	}
-
 	private prepareUpdateContext(elapsedS: number): CombatEntityUpdateContext {
 		this.updateContext.elapsedS = elapsedS;
 		this.updateContext.monsterHitboxes = this.monsterHitboxesAt(elapsedS);
-		this.updateContext.monsterSpatialIndex =
-			this.prepareMonsterSpatialIndex(elapsedS);
 		return this.updateContext;
 	}
 
