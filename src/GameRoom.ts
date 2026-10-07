@@ -191,15 +191,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 			(client: Client, message: MoveInput) =>
 				this.inputValidator.validate(client, message),
 		);
-		this.onMessage(
-			ClientMessage.SetDebugImmortal,
-			(client: Client, message: unknown) => {
-				const player = this.state.players.get(client.sessionId);
-				const enabled = readEnabledFlag(message);
-				if (!player || enabled === undefined) return;
-				player.debugImmortal = enabled;
-			},
-		);
+
 		this.onMessage('ready', (client: Client, ready: boolean) => {
 			const player = this.state.players.get(client.sessionId);
 			if (!player) return;
@@ -216,18 +208,7 @@ export class GameRoom extends Room<{ state: GameState }> {
 				this.lock();
 			}
 		});
-		this.onMessage(
-			ClientMessage.SetDebugMonsterStress,
-			(client: Client, message: unknown) => {
-				const enabled = readEnabledFlag(message);
-				if (
-					!this.state.players.has(client.sessionId) ||
-					enabled === undefined
-				)
-					return;
-				this.monsterManager.setStressTest(enabled);
-			},
-		);
+
 		this.onMessage(
 			ClientMessage.Revive,
 			(client: Client, message: unknown) => {

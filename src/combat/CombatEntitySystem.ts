@@ -230,7 +230,6 @@ export class CombatEntitySystem {
 		entity.hitboxWidth = input.collisionWidth ?? input.collisionRadius * 2;
 		entity.hitboxDepth = input.collisionDepth ?? input.collisionRadius * 2;
 		entity.hitboxHalfAngle = input.collisionHalfAngle ?? Math.PI / 2;
-		entity.spawnSequence = sequence;
 		entity.expiresAtS =
 			this.elapsedS +
 			Math.min(input.lifetimeS, COMBAT_LIMITS.maxEntityLifetimeS);

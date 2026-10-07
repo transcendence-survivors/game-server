@@ -2,7 +2,7 @@ import { SignJWT } from 'jose';
 import { API_INTERNAL, GAME_SECRET } from '.';
 import { TomeId, WeaponKind } from '@transcendence/game-shared';
 
-export enum WeaponKindUpload {
+enum WeaponKindUpload {
 	AURA = 'AURA',
 	BOW = 'BOW',
 	AXE = 'AXE',
@@ -10,7 +10,7 @@ export enum WeaponKindUpload {
 	STAFF = 'STAFF',
 }
 
-export enum TomeKindUpload {
+enum TomeKindUpload {
 	DAMAGE = 'DAMAGE',
 	COOLDOWN = 'COOLDOWN',
 	AGILITY = 'AGILITY',
@@ -38,7 +38,7 @@ export const tomeKindMap: Record<TomeId, TomeKindUpload> = {
 	fortune: TomeKindUpload.FORTUNE,
 };
 
-export interface Tome {
+interface Tome {
 	kind: TomeKindUpload;
 	level: number;
 }
@@ -56,7 +56,7 @@ export interface GameStats {
 	players: PlayerStats[];
 }
 
-export interface Weapon {
+interface Weapon {
 	kind: WeaponKindUpload;
 	level: number;
 }

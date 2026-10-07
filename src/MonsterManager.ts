@@ -39,7 +39,7 @@ interface PendingChildSpawn extends Vec2d {
 const MONSTER_CATALOG: readonly MonsterDefinition[] =
 	Object.values(MONSTER_DEFINITIONS);
 
-export function monsterSpawnPointOnRing(
+function monsterSpawnPointOnRing(
 	world: World,
 	centerX: number,
 	centerZ: number,
@@ -58,7 +58,6 @@ export function monsterSpawnPointOnRing(
 export class MonsterManager implements MonsterSimulationSource {
 	private elapsedS = 0;
 	private spawnBudget = 0;
-	private stressTestEnabled = false;
 	private nextMonsterId = 1;
 	private nextBossAtS = bossTimeAt(0);
 	private lastBossKind?: BossKind;
@@ -128,34 +127,6 @@ export class MonsterManager implements MonsterSimulationSource {
 		this.flushChildSpawns(this.pendingChildSpawns, false);
 	}
 
-	setStressTest(enabled: boolean): void {
-		this.stressTestEnabled = enabled;
-		this.nextSpawnUnlockS = 0;
-		if (!enabled) {
-			this.spawnBudget = 0;
-			this.trimNormalPopulation();
-		}
-	}
-
-	private trimNormalPopulation(): void {
-		const target = this.clampPopulationTarget(
-			this.normalPopulationTarget(this.livingPlayerCount()),
-		);
-		const excess = this.normalCount - target;
-		if (excess <= 0) return;
-
-		const removals: string[] = [];
-		this.roomState.monsters.forEach((monster, id) => {
-			if (
-				removals.length < excess &&
-				!monster.isBoss &&
-				!monster.life.isDepleted()
-			)
-				removals.push(id);
-		});
-		for (const id of removals) this.removeMonster(id);
-	}
-
 	private updateBossSchedule(): void {
 		while (this.elapsedS >= this.nextBossAtS) {
 			if (this.bossCount >= MONSTER_DIRECTOR_CONFIG.bossMaxAlive) {
@@ -170,8 +141,7 @@ export class MonsterManager implements MonsterSimulationSource {
 	private fillPopulation(dtSeconds: number): void {
 		const players = this.livingPlayerCount();
 		if (
-			(!this.stressTestEnabled &&
-				this.elapsedS < MONSTER_DIRECTOR_CONFIG.initialSpawnDelayS) ||
+			this.elapsedS < MONSTER_DIRECTOR_CONFIG.initialSpawnDelayS ||
 			players === 0
 		)
 			return;
@@ -185,46 +155,38 @@ export class MonsterManager implements MonsterSimulationSource {
 			totalTarget * MONSTER_DIRECTOR_CONFIG.maxElitePopulationRatio,
 		);
 
-		if (this.stressTestEnabled) this.spawnBudget = Number.POSITIVE_INFINITY;
-		else
-			this.spawnBudget = Math.min(
-				MONSTER_DIRECTOR_CONFIG.spawnBudgetCap,
-				this.spawnBudget + stage.spawnRate * dtSeconds,
-			);
+		this.spawnBudget = Math.min(
+			MONSTER_DIRECTOR_CONFIG.spawnBudgetCap,
+			this.spawnBudget + stage.spawnRate * dtSeconds,
+		);
 		if (currentCount >= desired) return;
-		this.refreshSpawnCandidates(this.stressTestEnabled);
+		this.refreshSpawnCandidates();
 
-		const maxSpawns = this.stressTestEnabled
-			? MONSTER_DIRECTOR_CONFIG.stressTestMaxSpawnsPerTick
-			: MONSTER_DIRECTOR_CONFIG.maxSpawnsPerTick;
 		let spawned = 0;
-		while (spawned < maxSpawns && currentCount < desired) {
-			const definition = this.pickSpawnDefinition(this.stressTestEnabled);
+		while (
+			spawned < MONSTER_DIRECTOR_CONFIG.maxSpawnsPerTick &&
+			currentCount < desired
+		) {
+			const definition = this.pickSpawnDefinition();
 			if (!definition) break;
 			const eliteChance =
-				eliteCount < maxEliteCount
-					? this.stressTestEnabled
-						? MONSTER_DIRECTOR_CONFIG.stressTestEliteChance
-						: stage.eliteChance
-					: 0;
+				eliteCount < maxEliteCount ? stage.eliteChance : 0;
 			const rank = this.pickRank(definition, eliteChance);
 			if (!this.spawnMonster(definition.kind, rank, players)) break;
-			if (!this.stressTestEnabled)
-				this.spawnBudget -= definition.spawn.cost;
+			this.spawnBudget -= definition.spawn.cost;
 			currentCount++;
 			if (rank === 'elite') eliteCount++;
 			spawned++;
 		}
 	}
 
-	private refreshSpawnCandidates(includeLocked = false): void {
+	private refreshSpawnCandidates(): void {
 		if (this.elapsedS < this.nextSpawnUnlockS) return;
 		this.spawnCandidates.length = 0;
 		this.nextSpawnUnlockS = Number.POSITIVE_INFINITY;
-		const elapsed = includeLocked ? Number.MAX_SAFE_INTEGER : this.elapsedS;
 		for (const definition of MONSTER_CATALOG) {
 			if (definition.rank === 'boss') continue;
-			if (definition.spawn.minTimeS <= elapsed)
+			if (definition.spawn.minTimeS <= this.elapsedS)
 				this.spawnCandidates.push(definition);
 			else
 				this.nextSpawnUnlockS = Math.min(
@@ -234,15 +196,13 @@ export class MonsterManager implements MonsterSimulationSource {
 		}
 	}
 
-	private pickSpawnDefinition(
-		ignoreCost = false,
-	): MonsterDefinition | undefined {
+	private pickSpawnDefinition(): MonsterDefinition | undefined {
 		let totalWeight = 0;
 		let lastEligible: MonsterDefinition | undefined;
 		for (const definition of this.spawnCandidates) {
 			if (
 				definition.spawn.weight > 0 &&
-				(ignoreCost || definition.spawn.cost <= this.spawnBudget)
+				definition.spawn.cost <= this.spawnBudget
 			) {
 				totalWeight += definition.spawn.weight;
 				lastEligible = definition;
@@ -254,7 +214,7 @@ export class MonsterManager implements MonsterSimulationSource {
 		for (const definition of this.spawnCandidates) {
 			if (
 				definition.spawn.weight <= 0 ||
-				(!ignoreCost && definition.spawn.cost > this.spawnBudget)
+				definition.spawn.cost > this.spawnBudget
 			)
 				continue;
 			roll -= definition.spawn.weight;
@@ -484,9 +444,7 @@ export class MonsterManager implements MonsterSimulationSource {
 	}
 
 	private normalPopulationTarget(playerCount: number): number {
-		return this.stressTestEnabled
-			? MONSTER_DIRECTOR_CONFIG.stressTestPopulation
-			: targetPopulation(this.elapsedS, playerCount);
+		return targetPopulation(this.elapsedS, playerCount);
 	}
 
 	private clampPopulationTarget(target: number): number {

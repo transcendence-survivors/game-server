@@ -12,14 +12,14 @@ import type {
 	MonsterTransform,
 } from '../monsters/MonsterSimulationSource';
 
-export interface DamageSource {
+interface DamageSource {
 	playerId: string;
 	weaponKind: WeaponKind;
 	combatEntityId: string;
 	knockback?: number;
 }
 
-export interface DamageResult {
+interface DamageResult {
 	requested: number;
 	applied: number;
 	fatal: boolean;
@@ -39,14 +39,14 @@ const KNOCKBACK_BY_WEAPON: Readonly<Record<WeaponKind, number>> = {
 	bow: 2,
 };
 
-export type MonsterKnockbackHandler = (
+type MonsterKnockbackHandler = (
 	monsterId: string,
 	directionX: number,
 	directionZ: number,
 	projectionDistance: number,
 ) => void;
 
-export type MonsterDeathHandler = (monsterId: string) => void;
+type MonsterDeathHandler = (monsterId: string) => void;
 
 export class DamageResolver {
 	private impactEvents: CombatImpactEvent[] = [];
@@ -80,7 +80,6 @@ export class DamageResolver {
 	damagePlayer(playerId: string, amount: number): DamageResult {
 		const player = this.roomState.players.get(playerId);
 		if (!player || player.life.isDepleted()) return NO_DAMAGE;
-		if (player.debugImmortal) return NO_DAMAGE;
 		if (!Number.isFinite(amount) || amount <= 0) return NO_DAMAGE;
 		const armor = Math.max(0, player.stats.armor);
 		const requested = amount * (100 / (100 + armor));
