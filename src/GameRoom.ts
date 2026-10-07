@@ -14,6 +14,7 @@ import {
 	clampPositionToCircle,
 	findSpawnPoint,
 	rollUpgradeOptions,
+	mulberry32,
 	UPGRADE_CHOICE_COUNT,
 	applyUpgrade,
 	ClientMessage,
@@ -239,20 +240,13 @@ export class GameRoom extends Room<{ state: GameState }> {
 		}
 
 		const sequence = ++progress.rollSequence;
-		let randomState = this.state.seed ^ sequence;
+		let seed = this.state.seed ^ sequence;
 		for (const character of client.sessionId)
-			randomState = Math.imul(
-				randomState ^ character.charCodeAt(0),
-				16777619,
-			);
-		const random = () => {
-			randomState = (Math.imul(randomState, 1664525) + 1013904223) | 0;
-			return (randomState >>> 0) / 4294967296;
-		};
+			seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
 		const options = rollUpgradeOptions(
 			player,
 			UPGRADE_CHOICE_COUNT,
-			random,
+			mulberry32(seed),
 		);
 		if (options.length === 0) {
 			progress.availableChoices = 0;
