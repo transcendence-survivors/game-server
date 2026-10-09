@@ -105,7 +105,7 @@ export class MonsterPbdSolver {
 			this.positionsZ[index] = desiredZ[index];
 			this.radii[index] = Math.max(0, monster.hitboxRadius);
 			this.knockedBack[index] = knockedBack[index] ? 1 : 0;
-			if (monster.isBoss) {
+			if (monster.rank === 'boss') {
 				this.bosses.push(index);
 				continue;
 			}

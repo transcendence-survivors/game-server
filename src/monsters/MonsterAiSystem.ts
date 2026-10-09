@@ -524,7 +524,7 @@ export class MonsterAiSystem {
 		const stopDistance =
 			runtime.stats.attackRange + monster.hitboxRadius + PLAYER_HB_RADIUS;
 		if (distance <= stopDistance) {
-			if (!this.claimAttackSlot(target.sessionId, monster.isBoss)) {
+			if (!this.claimAttackSlot(target.sessionId, monster.rank === 'boss')) {
 				this.move(monster, runtime, target.player, 0, dtSeconds);
 				this.setAnimation(monster, 'walk', elapsedS);
 				return true;

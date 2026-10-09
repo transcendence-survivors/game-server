@@ -1,7 +1,9 @@
 import {
 	BOSS_KINDS,
 	clampPositionToCircle,
+	BOSS_MODEL_SCALE,
 	ELITE_MODEL_SCALE,
+	MONSTER_MODEL_SCALE,
 	GameState,
 	MONSTER_DEFINITIONS,
 	getMonsterDefinition,
@@ -304,11 +306,13 @@ export class MonsterManager implements MonsterSimulationSource {
 		const isBoss = rank === 'boss';
 		const isElite = rank === 'elite';
 		monster.kind = kind;
-		monster.isBoss = isBoss;
-		monster.isElite = isElite;
 		monster.rank = rank;
 		monster.sizeMultiplier =
 			definition.visualScale * (isElite ? ELITE_MODEL_SCALE : 1);
+		monster.modelScale =
+			monster.sizeMultiplier *
+			(isBoss ? BOSS_MODEL_SCALE : 1) *
+			MONSTER_MODEL_SCALE;
 		monster.knockbackResistance = stats.knockbackResistance;
 		monster.life = new Life(stats.maxLife);
 		monster.damage = stats.damage;

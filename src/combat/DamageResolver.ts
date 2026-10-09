@@ -119,8 +119,6 @@ export class DamageResolver {
 				y: position.y,
 				z: position.z,
 				amount: applied,
-				isBoss: monster.isBoss,
-				isElite: monster.isElite,
 				fatal,
 				sourcePlayerId: source.playerId,
 				weaponKind: source.weaponKind,
