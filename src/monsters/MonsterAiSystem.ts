@@ -6,7 +6,6 @@ import {
 	TAU,
 	PLAYER_ACCESS_RADIUS,
 	PLAYER_HB_RADIUS,
-	resolveTerrainCollision,
 	type GameState,
 	type Monster,
 	type Player,
@@ -49,7 +48,7 @@ export class MonsterAiSystem {
 	private publishTransformsThisTick = false;
 	private readonly crowdSolver = new MonsterPbdSolver();
 	private readonly moveOutput = { x: 0, z: 0 };
-	private readonly pbdOrigin = { x: 0, z: 0 };
+	private readonly chaseOrigin = { x: 0, z: 0 };
 	private readonly chaseOutput = {
 		x: 0,
 		z: 0,
@@ -263,7 +262,7 @@ export class MonsterAiSystem {
 				0,
 				this.hot.chargeRemainingS[slot] - dtSeconds,
 			);
-			if (this.applyKnockbackImpulse(monster, runtime, dtSeconds)) {
+			if (this.applyKnockbackImpulse(runtime, dtSeconds)) {
 				this.setAnimation(monster, 'idle', elapsedS);
 				continue;
 			}
@@ -335,14 +334,9 @@ export class MonsterAiSystem {
 				desiredX !== this.hot.positionX[slot] ||
 				desiredZ !== this.hot.positionZ[slot]
 			) {
-				this.pbdOrigin.x = this.hot.positionX[slot];
-				this.pbdOrigin.z = this.hot.positionZ[slot];
-				const resolved = this.resolveTerrainMove(
-					desiredX,
-					desiredZ,
-					this.hot.positionY[slot],
-					Math.max(PLAYER_HB_RADIUS, monster.hitboxRadius),
-				);
+				const resolved = this.moveOutput;
+				resolved.x = desiredX;
+				resolved.z = desiredZ;
 				clampPositionToCircle(
 					resolved,
 					this.roomState.rayX,
@@ -385,7 +379,6 @@ export class MonsterAiSystem {
 	}
 
 	private applyKnockbackImpulse(
-		monster: Monster,
 		runtime: MonsterRuntime,
 		dtSeconds: number,
 	): boolean {
@@ -402,7 +395,7 @@ export class MonsterAiSystem {
 			this.hot.knockbackVelocityZ[slot] * integrationScale;
 		const originX = this.hot.positionX[slot];
 		const originZ = this.hot.positionZ[slot];
-		this.applyDesiredPosition(monster, runtime, desiredX, desiredZ);
+		this.applyDesiredPosition(runtime, desiredX, desiredZ);
 		const remainingAfter = Math.max(0, remaining - step);
 		const velocityScale = remainingAfter / remaining;
 		this.hot.knockbackVelocityX[slot] *= velocityScale;
@@ -524,7 +517,9 @@ export class MonsterAiSystem {
 		const stopDistance =
 			runtime.stats.attackRange + monster.hitboxRadius + PLAYER_HB_RADIUS;
 		if (distance <= stopDistance) {
-			if (!this.claimAttackSlot(target.sessionId, monster.rank === 'boss')) {
+			if (
+				!this.claimAttackSlot(target.sessionId, monster.rank === 'boss')
+			) {
 				this.move(monster, runtime, target.player, 0, dtSeconds);
 				this.setAnimation(monster, 'walk', elapsedS);
 				return true;
@@ -932,10 +927,10 @@ export class MonsterAiSystem {
 		stopDistance = 0,
 	): void {
 		const slot = runtime.slot;
-		this.pbdOrigin.x = this.hot.positionX[slot];
-		this.pbdOrigin.z = this.hot.positionZ[slot];
+		this.chaseOrigin.x = this.hot.positionX[slot];
+		this.chaseOrigin.z = this.hot.positionZ[slot];
 		const step = chaseStep(
-			this.pbdOrigin,
+			this.chaseOrigin,
 			target,
 			speed,
 			dtSeconds,
@@ -943,42 +938,7 @@ export class MonsterAiSystem {
 			this.chaseOutput,
 		);
 		this.publishRotation(monster, runtime, step.rotationY);
-		this.applyDesiredPosition(monster, runtime, step.x, step.z);
-	}
-
-	private resolveTerrainMove(
-		targetX: number,
-		targetZ: number,
-		currentY: number,
-		footprintRadius: number,
-	): Vec2d {
-		if (this.world.isSmoothTerrain) {
-			this.moveOutput.x = targetX;
-			this.moveOutput.z = targetZ;
-			return this.moveOutput;
-		}
-		const cellSize = this.world.CELL;
-		const cellX = Math.floor(this.pbdOrigin.x / cellSize);
-		const cellZ = Math.floor(this.pbdOrigin.z / cellSize);
-		if (
-			targetX - footprintRadius >= cellX * cellSize &&
-			targetX + footprintRadius < (cellX + 1) * cellSize &&
-			targetZ - footprintRadius >= cellZ * cellSize &&
-			targetZ + footprintRadius < (cellZ + 1) * cellSize
-		) {
-			this.moveOutput.x = targetX;
-			this.moveOutput.z = targetZ;
-			return this.moveOutput;
-		}
-		return resolveTerrainCollision(
-			this.world,
-			this.pbdOrigin,
-			targetX,
-			targetZ,
-			currentY,
-			this.moveOutput,
-			footprintRadius,
-		);
+		this.applyDesiredPosition(runtime, step.x, step.z);
 	}
 
 	private moveAway(
@@ -997,24 +957,18 @@ export class MonsterAiSystem {
 		const desiredZ =
 			this.hot.positionZ[slot] + (dz / length) * speed * dtSeconds;
 		this.publishRotation(monster, runtime, Math.atan2(dx, dz));
-		this.applyDesiredPosition(monster, runtime, desiredX, desiredZ);
+		this.applyDesiredPosition(runtime, desiredX, desiredZ);
 	}
 
 	private applyDesiredPosition(
-		monster: Monster,
 		runtime: MonsterRuntime,
 		desiredX: number,
 		desiredZ: number,
 	): void {
 		const slot = runtime.slot;
-		this.pbdOrigin.x = this.hot.positionX[slot];
-		this.pbdOrigin.z = this.hot.positionZ[slot];
-		const resolved = this.resolveTerrainMove(
-			desiredX,
-			desiredZ,
-			this.hot.positionY[slot],
-			Math.max(PLAYER_HB_RADIUS, monster.hitboxRadius),
-		);
+		const resolved = this.moveOutput;
+		resolved.x = desiredX;
+		resolved.z = desiredZ;
 		clampPositionToCircle(
 			resolved,
 			this.roomState.rayX,

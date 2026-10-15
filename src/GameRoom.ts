@@ -12,7 +12,6 @@ import {
 	Player,
 	PLAYER_ACCESS_RADIUS,
 	clampPositionToCircle,
-	findSpawnPoint,
 	rollUpgradeOptions,
 	mulberry32,
 	UPGRADE_CHOICE_COUNT,
@@ -48,6 +47,7 @@ interface PlayerUpgradeProgress {
 
 const SIMULATION_INTERVAL_MS = 50;
 const RECONNECT_TIMEOUT = 40;
+const PLAYER_SPAWN_SPREAD = 24;
 
 function readEnabledFlag(message: unknown): boolean | undefined {
 	if (typeof message !== 'object' || message === null) return undefined;
@@ -300,15 +300,11 @@ export class GameRoom extends Room<{ state: GameState }> {
 			return;
 		}
 		const index = this.state.players.size;
-		const spread = index === 0 ? 0 : this.world.CELL * 2;
+		const spread = index === 0 ? 0 : PLAYER_SPAWN_SPREAD;
 		const angle = index * (Math.PI / 2);
-		const spawn = findSpawnPoint(
-			this.world,
+		const spawn = this.world.groundPoint(
 			this.state.rayX + Math.cos(angle) * spread,
 			this.state.rayZ + Math.sin(angle) * spread,
-			this.state.rayX,
-			this.state.rayZ,
-			PLAYER_ACCESS_RADIUS,
 		);
 		const player = new Player();
 		player.id = (index + 1) as 1 | 2 | 3 | 4;

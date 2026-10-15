@@ -8,7 +8,6 @@ import {
 	MONSTER_DEFINITIONS,
 	getMonsterDefinition,
 	getMonsterHitbox,
-	findSpawnPoint,
 	Life,
 	MONSTER_DIRECTOR_CONFIG,
 	Monster,
@@ -40,22 +39,6 @@ interface PendingChildSpawn extends Vec2d {
 
 const MONSTER_CATALOG: readonly MonsterDefinition[] =
 	Object.values(MONSTER_DEFINITIONS);
-
-function monsterSpawnPointOnRing(
-	world: World,
-	centerX: number,
-	centerZ: number,
-	angle: number,
-	radius = MONSTER_DIRECTOR_CONFIG.spawnRingRadius,
-): Vec3d {
-	const point = {
-		x: centerX + Math.cos(angle) * radius,
-		y: 0,
-		z: centerZ + Math.sin(angle) * radius,
-	};
-	point.y = world.height(point.x, point.z);
-	return point;
-}
 
 export class MonsterManager implements MonsterSimulationSource {
 	private elapsedS = 0;
@@ -268,33 +251,23 @@ export class MonsterManager implements MonsterSimulationSource {
 		if (rank === 'boss' && definition.rank !== 'boss') return false;
 		if (rank !== 'boss' && definition.rank === 'boss') return false;
 
-		const hasExplicitPosition = x !== undefined && z !== undefined;
 		let spawn: Vec3d;
-		if (hasExplicitPosition) {
-			spawn = findSpawnPoint(
-				this.world,
-				x,
-				z,
-				x,
-				z,
-				this.world.CELL *
-					MONSTER_DIRECTOR_CONFIG.spawnPointSearchRadiusCells,
+		if (x === undefined || z === undefined) {
+			const angle = this.randomValue() * TAU;
+			const radius = MONSTER_DIRECTOR_CONFIG.spawnRingRadius;
+			spawn = this.world.groundPoint(
+				this.roomState.rayX + Math.cos(angle) * radius,
+				this.roomState.rayZ + Math.sin(angle) * radius,
 			);
 		} else {
-			spawn = monsterSpawnPointOnRing(
-				this.world,
-				this.roomState.rayX,
-				this.roomState.rayZ,
-				this.randomValue() * TAU,
-			);
-		}
-		if (hasExplicitPosition)
+			spawn = this.world.groundPoint(x, z);
 			clampPositionToCircle(
 				spawn,
 				this.roomState.rayX,
 				this.roomState.rayZ,
 				PLAYER_ACCESS_RADIUS + MONSTER_DIRECTOR_CONFIG.boundaryPadding,
 			);
+		}
 
 		const stats = computeArchetypeStats(
 			kind,
