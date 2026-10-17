@@ -24,7 +24,7 @@ export class MonsterHotState {
 	knockbackVelocityX = new Float64Array(INITIAL_CAPACITY);
 	knockbackVelocityZ = new Float64Array(INITIAL_CAPACITY);
 	knockbackRemainingS = new Float64Array(INITIAL_CAPACITY);
-	knockbackProtected = new Uint8Array(INITIAL_CAPACITY);
+	knockedBack = new Uint8Array(INITIAL_CAPACITY);
 	groundDirty = new Uint8Array(INITIAL_CAPACITY);
 
 	initialize(slot: number, monster: Monster, runtime: MonsterRuntime): void {
@@ -52,7 +52,7 @@ export class MonsterHotState {
 			this.knockbackVelocityX[slot] =
 			this.knockbackVelocityZ[slot] =
 			this.knockbackRemainingS[slot] =
-			this.knockbackProtected[slot] =
+			this.knockedBack[slot] =
 			this.groundDirty[slot] =
 				0;
 	}
@@ -96,4 +96,4 @@ const FLOAT_FIELDS = [
 	'knockbackRemainingS',
 ] as const;
 
-const FLAG_FIELDS = ['knockbackProtected', 'groundDirty'] as const;
+const FLAG_FIELDS = ['knockedBack', 'groundDirty'] as const;

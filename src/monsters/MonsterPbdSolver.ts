@@ -1,7 +1,6 @@
 import {
 	MONSTER_DIRECTOR_CONFIG,
 	nextPowerOfTwoCapacity,
-	type Monster,
 } from '@transcendence/game-shared';
 
 const {
@@ -23,6 +22,7 @@ export class MonsterPbdSolver {
 	private readonly knockedBack = new Uint8Array(MAX_MONSTERS);
 	private readonly regularMonsters: number[] = [];
 	private readonly bosses: number[] = [];
+	private count = 0;
 
 	private cellSize = 1;
 	private largestRegularRadius = 0;
@@ -41,16 +41,41 @@ export class MonsterPbdSolver {
 	private overlapDepth = 0;
 	private tick = 0;
 
-	solve(
-		monsters: readonly Monster[],
-		knockedBack: readonly boolean[],
-		desiredX: Float64Array,
-		desiredZ: Float64Array,
+	reset(): void {
+		this.count = 0;
+		this.regularMonsters.length = 0;
+		this.bosses.length = 0;
+		this.largestRegularRadius = 0;
+	}
+
+	add(
+		x: number,
+		z: number,
+		radius: number,
+		isBoss: boolean,
+		knockedBack: boolean,
 	): void {
-		const count = monsters.length;
-		if (count > MAX_MONSTERS)
-			throw new Error(`MonsterPbdSolver: ${count} > ${MAX_MONSTERS}`);
-		this.loadMonsters(monsters, knockedBack, desiredX, desiredZ);
+		const index = this.count++;
+		if (index >= MAX_MONSTERS)
+			throw new Error(
+				`MonsterPbdSolver: ${this.count} > ${MAX_MONSTERS}`,
+			);
+		this.positionsX[index] = x;
+		this.positionsZ[index] = z;
+		this.radii[index] = Math.max(0, radius);
+		this.knockedBack[index] = knockedBack ? 1 : 0;
+		if (isBoss) {
+			this.bosses.push(index);
+			return;
+		}
+		this.regularMonsters.push(index);
+		this.largestRegularRadius = Math.max(
+			this.largestRegularRadius,
+			this.radii[index],
+		);
+	}
+
+	solve(): void {
 		this.sortMonstersIntoBuckets();
 		this.findNeighborPairs();
 		for (let iteration = 0; iteration < ITERATIONS; iteration++) {
@@ -88,33 +113,6 @@ export class MonsterPbdSolver {
 		}
 		result.push(...this.bosses);
 		return result;
-	}
-
-	private loadMonsters(
-		monsters: readonly Monster[],
-		knockedBack: readonly boolean[],
-		desiredX: Float64Array,
-		desiredZ: Float64Array,
-	): void {
-		this.regularMonsters.length = 0;
-		this.bosses.length = 0;
-		this.largestRegularRadius = 0;
-		for (let index = 0; index < monsters.length; index++) {
-			const monster = monsters[index];
-			this.positionsX[index] = desiredX[index];
-			this.positionsZ[index] = desiredZ[index];
-			this.radii[index] = Math.max(0, monster.hitboxRadius);
-			this.knockedBack[index] = knockedBack[index] ? 1 : 0;
-			if (monster.rank === 'boss') {
-				this.bosses.push(index);
-				continue;
-			}
-			this.regularMonsters.push(index);
-			this.largestRegularRadius = Math.max(
-				this.largestRegularRadius,
-				this.radii[index],
-			);
-		}
 	}
 
 	private cellOf(position: number): number {

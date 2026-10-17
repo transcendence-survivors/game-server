@@ -2,7 +2,6 @@ import {
 	chaseStep,
 	clampPositionToCircle,
 	MONSTER_DIRECTOR_CONFIG,
-	nextPowerOfTwoCapacity,
 	TAU,
 	PLAYER_ACCESS_RADIUS,
 	PLAYER_HB_RADIUS,
@@ -25,6 +24,27 @@ interface Target {
 
 type SpawnChild = (kind: string, x: number, z: number) => void;
 
+interface MonsterTick {
+	id: string;
+	monster: Monster;
+	runtime: MonsterRuntime;
+	target: Target;
+	distance: number;
+	dtSeconds: number;
+	elapsedS: number;
+}
+
+function contactRange(monster: Monster, runtime: MonsterRuntime): number {
+	return runtime.stats.attackRange + monster.hitboxRadius + PLAYER_HB_RADIUS;
+}
+
+const COUNTDOWNS = [
+	'attackCooldownS',
+	'specialCooldownS',
+	'chargeCooldownS',
+	'chargeRemainingS',
+] as const;
+
 export class MonsterAiSystem {
 	private readonly targets: Target[] = [];
 	private readonly monsterIds: string[] = [];
@@ -38,10 +58,8 @@ export class MonsterAiSystem {
 	private readonly pbdMonsterIds: string[] = [];
 	private readonly unindexedMonsterIds: string[] = [];
 	private readonly spatialCandidateIndices: number[] = [];
-	private readonly pbdKinematic: boolean[] = [];
-	private pbdPositionsX = new Float64Array(32);
-	private pbdPositionsZ = new Float64Array(32);
 	private readonly hot = new MonsterHotState();
+	private readonly tick = {} as MonsterTick;
 	private readonly freeHotSlots: number[] = [];
 	private nextHotSlot = 0;
 	private transformPublishAccumulatorS = 0;
@@ -238,30 +256,18 @@ export class MonsterAiSystem {
 		for (let index = 0; index < this.monsters.length; index++) {
 			const id = this.monsterIds[index];
 			const monster = this.monsters[index];
-			if (this.removalSet.has(id)) continue;
 			const runtime = this.activeRuntimes[index];
 			if (monster.life.isDepleted()) continue;
 			const slot = runtime.slot;
-			this.hot.knockbackProtected[slot] = 0;
+			this.hot.knockedBack[slot] = 0;
 			this.syncExternalTransform(monster, runtime);
 			this.hot.lastX[slot] = this.hot.positionX[slot];
 			this.hot.lastZ[slot] = this.hot.positionZ[slot];
-			this.hot.attackCooldownS[slot] = Math.max(
-				0,
-				this.hot.attackCooldownS[slot] - dtSeconds,
-			);
-			this.hot.specialCooldownS[slot] = Math.max(
-				0,
-				this.hot.specialCooldownS[slot] - dtSeconds,
-			);
-			this.hot.chargeCooldownS[slot] = Math.max(
-				0,
-				this.hot.chargeCooldownS[slot] - dtSeconds,
-			);
-			this.hot.chargeRemainingS[slot] = Math.max(
-				0,
-				this.hot.chargeRemainingS[slot] - dtSeconds,
-			);
+			for (const key of COUNTDOWNS)
+				this.hot[key][slot] = Math.max(
+					0,
+					this.hot[key][slot] - dtSeconds,
+				);
 			if (this.applyKnockbackImpulse(runtime, dtSeconds)) {
 				this.setAnimation(monster, 'idle', elapsedS);
 				continue;
@@ -273,17 +279,15 @@ export class MonsterAiSystem {
 				continue;
 			}
 			runtime.targetSessionId = target.sessionId;
-			const distance = this.distance(runtime, target.player);
-			const handled = this.updateBehavior(
-				id,
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
-			if (!handled) this.setAnimation(monster, 'idle', elapsedS);
+			const tick = this.tick;
+			tick.id = id;
+			tick.monster = monster;
+			tick.runtime = runtime;
+			tick.target = target;
+			tick.distance = this.distance(runtime, target.player);
+			tick.dtSeconds = dtSeconds;
+			tick.elapsedS = elapsedS;
+			this.updateBehavior(tick);
 		}
 		this.solveCrowdContacts();
 		return this.removals;
@@ -293,8 +297,7 @@ export class MonsterAiSystem {
 		this.pbdMonsters.length = 0;
 		this.pbdRuntimes.length = 0;
 		this.pbdMonsterIds.length = 0;
-		this.pbdKinematic.length = 0;
-		this.ensurePbdPositionCapacity(this.monsters.length);
+		this.crowdSolver.reset();
 		for (let index = 0; index < this.monsters.length; index++) {
 			const id = this.monsterIds[index];
 			const monster = this.monsters[index];
@@ -307,20 +310,16 @@ export class MonsterAiSystem {
 				this.pbdMonsters.push(monster);
 				this.pbdRuntimes.push(runtime);
 				this.pbdMonsterIds.push(id);
-				this.pbdKinematic.push(
-					this.hot.knockbackProtected[runtime.slot] !== 0,
+				this.crowdSolver.add(
+					this.hot.positionX[runtime.slot],
+					this.hot.positionZ[runtime.slot],
+					monster.hitboxRadius,
+					monster.rank === 'boss',
+					this.hot.knockedBack[runtime.slot] !== 0,
 				);
-				const pbdIndex = this.pbdMonsters.length - 1;
-				this.pbdPositionsX[pbdIndex] = this.hot.positionX[runtime.slot];
-				this.pbdPositionsZ[pbdIndex] = this.hot.positionZ[runtime.slot];
 			}
 		}
-		this.crowdSolver.solve(
-			this.pbdMonsters,
-			this.pbdKinematic,
-			this.pbdPositionsX,
-			this.pbdPositionsZ,
-		);
+		this.crowdSolver.solve();
 		this.unindexedMonsterIds.length = 0;
 		for (let index = 0; index < this.pbdMonsters.length; index++) {
 			const monster = this.pbdMonsters[index];
@@ -362,20 +361,10 @@ export class MonsterAiSystem {
 			this.hot.lastZ[slot] = finalZ;
 			if (
 				this.publishTransformsThisTick ||
-				this.hot.knockbackProtected[slot] !== 0
+				this.hot.knockedBack[slot] !== 0
 			)
 				this.publishPosition(monster, runtime, finalX, finalZ);
 		}
-	}
-
-	private ensurePbdPositionCapacity(required: number): void {
-		if (required <= this.pbdPositionsX.length) return;
-		const capacity = nextPowerOfTwoCapacity(
-			required,
-			this.pbdPositionsX.length,
-		);
-		this.pbdPositionsX = new Float64Array(capacity);
-		this.pbdPositionsZ = new Float64Array(capacity);
 	}
 
 	private applyKnockbackImpulse(
@@ -401,7 +390,7 @@ export class MonsterAiSystem {
 		this.hot.knockbackVelocityX[slot] *= velocityScale;
 		this.hot.knockbackVelocityZ[slot] *= velocityScale;
 		this.hot.knockbackRemainingS[slot] = remainingAfter;
-		this.hot.knockbackProtected[slot] = 1;
+		this.hot.knockedBack[slot] = 1;
 		if (remainingAfter <= Number.EPSILON) {
 			this.hot.knockbackVelocityX[slot] = 0;
 			this.hot.knockbackVelocityZ[slot] = 0;
@@ -436,183 +425,53 @@ export class MonsterAiSystem {
 		return true;
 	}
 
-	private updateBehavior(
-		id: string,
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
+	private updateBehavior(tick: MonsterTick): void {
+		const { runtime } = tick;
 		const ai = runtime.definition.ai;
-		if (ai.kind === 'bomber')
-			return this.updateBomber(
-				id,
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
-		if (ai.kind === 'charger')
-			return this.updateCharger(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
-		if (ai.kind === 'ranged')
-			return this.updateRanged(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
+		if (ai.kind === 'bomber') return this.updateBomber(tick);
+		if (ai.kind === 'charger') return this.updateCharger(tick);
+		if (ai.kind === 'ranged') return this.updateRanged(tick);
 		if (ai.kind === 'summoner') {
-			this.updateSummon(runtime, monster, elapsedS);
-			return this.updatePreferredDistance(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
+			this.updateSummon(tick);
+			this.updatePreferredDistance(tick);
+			return;
 		}
-		if (ai.kind === 'boss')
-			return this.updateBoss(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
+		if (ai.kind === 'boss') return this.updateBoss(tick);
 
-		return this.updateContact(
-			monster,
-			runtime,
-			target,
-			distance,
-			dtSeconds,
-			elapsedS,
-		);
+		return this.updateContact(tick);
 	}
 
-	private updateContact(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
+	private updateContact(tick: MonsterTick): void {
+		const { monster, runtime, target, distance, elapsedS } = tick;
 		const ai = runtime.definition.ai;
-		const stopDistance =
-			runtime.stats.attackRange + monster.hitboxRadius + PLAYER_HB_RADIUS;
+		const stopDistance = contactRange(monster, runtime);
 		if (distance <= stopDistance) {
 			if (
 				!this.claimAttackSlot(target.sessionId, monster.rank === 'boss')
 			) {
-				this.move(monster, runtime, target.player, 0, dtSeconds);
+				this.move(tick, 0);
 				this.setAnimation(monster, 'walk', elapsedS);
-				return true;
+				return;
 			}
 			this.setAnimation(monster, 'attack', elapsedS);
-			if (this.hot.attackCooldownS[runtime.slot] <= 0) {
-				this.hitPlayer(
-					runtime,
-					target.sessionId,
-					ai.contactDamageMultiplier,
-				);
-				this.hot.attackCooldownS[runtime.slot] =
-					runtime.stats.attackCooldownS;
-			}
-			return true;
+			this.attackIfReady(tick, ai.contactDamageMultiplier);
+			return;
 		}
 		this.move(
-			monster,
-			runtime,
-			target.player,
+			tick,
 			runtime.stats.moveSpeed * ai.movementSpeedMultiplier,
-			dtSeconds,
 			stopDistance,
 		);
 		this.setAnimation(monster, 'walk', elapsedS);
-		return true;
 	}
 
-	private updateRanged(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
-		const preferred = Math.max(
-			runtime.definition.ai.preferredRange,
-			runtime.stats.attackRange +
-				MONSTER_DIRECTOR_CONFIG.preferredRangePadding,
-		);
-		const retreat = Math.min(
-			preferred - MONSTER_DIRECTOR_CONFIG.preferredRangeBuffer,
-			Math.max(0, runtime.definition.ai.retreatRange),
-		);
-		if (distance < retreat) {
-			this.moveAway(
-				monster,
-				runtime,
-				target.player,
-				runtime.stats.moveSpeed,
-				dtSeconds,
-			);
-			this.setAnimation(monster, 'walk', elapsedS);
-			return true;
-		}
-		if (distance > preferred) {
-			this.move(
-				monster,
-				runtime,
-				target.player,
-				runtime.stats.moveSpeed,
-				dtSeconds,
-				preferred,
-			);
-			this.setAnimation(monster, 'walk', elapsedS);
-			return true;
-		}
-		this.face(monster, runtime, target.player);
-		this.setAnimation(monster, 'attack', elapsedS);
-		if (this.hot.attackCooldownS[runtime.slot] <= 0) {
-			this.hitPlayer(
-				runtime,
-				target.sessionId,
-				runtime.definition.ai.contactDamageMultiplier,
-			);
-			this.hot.attackCooldownS[runtime.slot] =
-				runtime.stats.attackCooldownS;
-		}
-		this.useSpecialIfReady(monster, runtime, target, elapsedS);
-		return true;
+	private updateRanged(tick: MonsterTick): void {
+		if (this.updatePreferredDistance(tick)) this.useSpecialIfReady(tick);
 	}
 
-	private updateCharger(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
-		const stopDistance =
-			runtime.stats.attackRange + monster.hitboxRadius + PLAYER_HB_RADIUS;
+	private updateCharger(tick: MonsterTick): void {
+		const { monster, runtime, target, distance, elapsedS } = tick;
+		const stopDistance = contactRange(monster, runtime);
 		if (
 			this.hot.chargeRemainingS[runtime.slot] <= 0 &&
 			this.hot.chargeCooldownS[runtime.slot] <= 0 &&
@@ -626,50 +485,28 @@ export class MonsterAiSystem {
 		if (this.hot.chargeRemainingS[runtime.slot] > 0) {
 			this.setAnimation(monster, 'attack', elapsedS);
 			this.move(
-				monster,
-				runtime,
-				target.player,
+				tick,
 				runtime.stats.moveSpeed *
 					runtime.definition.ai.chargeSpeedMultiplier,
-				dtSeconds,
 				stopDistance,
 			);
 			if (
 				distance <= stopDistance &&
 				this.claimAttackSlot(target.sessionId)
 			) {
-				if (this.hot.attackCooldownS[runtime.slot] <= 0) {
-					this.hitPlayer(
-						runtime,
-						target.sessionId,
-						runtime.definition.ai.chargeDamageMultiplier,
-					);
-					this.hot.attackCooldownS[runtime.slot] =
-						runtime.stats.attackCooldownS;
-				}
+				this.attackIfReady(
+					tick,
+					runtime.definition.ai.chargeDamageMultiplier,
+				);
 				this.hot.chargeRemainingS[runtime.slot] = 0;
 			}
-			return true;
+			return;
 		}
-		return this.updateContact(
-			monster,
-			runtime,
-			target,
-			distance,
-			dtSeconds,
-			elapsedS,
-		);
+		return this.updateContact(tick);
 	}
 
-	private updateBomber(
-		id: string,
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
+	private updateBomber(tick: MonsterTick): void {
+		const { id, monster, runtime, distance, elapsedS } = tick;
 		const detonationDistance = Math.max(
 			runtime.stats.attackRange + monster.hitboxRadius,
 			runtime.definition.ai.specialRadius *
@@ -685,25 +522,14 @@ export class MonsterAiSystem {
 			);
 			this.removalSet.add(id);
 			this.removals.push(id);
-			return true;
+			return;
 		}
-		this.move(
-			monster,
-			runtime,
-			target.player,
-			runtime.stats.moveSpeed,
-			dtSeconds,
-			0,
-		);
+		this.move(tick, runtime.stats.moveSpeed);
 		this.setAnimation(monster, 'walk', elapsedS);
-		return true;
 	}
 
-	private updateSummon(
-		runtime: MonsterRuntime,
-		monster: Monster,
-		elapsedS: number,
-	): void {
+	private updateSummon(tick: MonsterTick): void {
+		const { runtime, monster, elapsedS } = tick;
 		if (this.hot.specialCooldownS[runtime.slot] > 0) return;
 		const kind = runtime.definition.ai.summonKind;
 		if (!kind) return;
@@ -728,45 +554,15 @@ export class MonsterAiSystem {
 		this.setAnimation(monster, 'attack', elapsedS);
 	}
 
-	private updateBoss(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
-		const preferred = runtime.definition.ai.preferredRange;
-		if (preferred > 0)
-			this.updatePreferredDistance(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
-		else
-			this.updateContact(
-				monster,
-				runtime,
-				target,
-				distance,
-				dtSeconds,
-				elapsedS,
-			);
-		this.useSpecialIfReady(monster, runtime, target, elapsedS);
-		return true;
+	private updateBoss(tick: MonsterTick): void {
+		if (tick.runtime.definition.ai.preferredRange > 0)
+			this.updatePreferredDistance(tick);
+		else this.updateContact(tick);
+		this.useSpecialIfReady(tick);
 	}
 
-	private updatePreferredDistance(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		distance: number,
-		dtSeconds: number,
-		elapsedS: number,
-	): boolean {
+	private updatePreferredDistance(tick: MonsterTick): boolean {
+		const { monster, runtime, distance, elapsedS } = tick;
 		const preferred = Math.max(
 			runtime.definition.ai.preferredRange,
 			runtime.stats.attackRange +
@@ -776,51 +572,22 @@ export class MonsterAiSystem {
 			preferred - MONSTER_DIRECTOR_CONFIG.preferredRangeBuffer,
 			Math.max(0, runtime.definition.ai.retreatRange),
 		);
-		if (distance < retreat)
-			this.moveAway(
-				monster,
-				runtime,
-				target.player,
-				runtime.stats.moveSpeed,
-				dtSeconds,
-			);
+		if (distance < retreat) this.moveAway(tick, runtime.stats.moveSpeed);
 		else if (distance > preferred)
-			this.move(
-				monster,
-				runtime,
-				target.player,
-				runtime.stats.moveSpeed,
-				dtSeconds,
-				preferred,
-			);
-		else this.face(monster, runtime, target.player);
-		this.setAnimation(
-			monster,
-			distance >= retreat && distance <= preferred ? 'attack' : 'walk',
-			elapsedS,
-		);
-		if (
-			distance >= retreat &&
-			distance <= preferred &&
-			this.hot.attackCooldownS[runtime.slot] <= 0
-		) {
-			this.hitPlayer(
-				runtime,
-				target.sessionId,
+			this.move(tick, runtime.stats.moveSpeed, preferred);
+		else this.face(tick);
+		const inRange = distance >= retreat && distance <= preferred;
+		this.setAnimation(monster, inRange ? 'attack' : 'walk', elapsedS);
+		if (inRange)
+			this.attackIfReady(
+				tick,
 				runtime.definition.ai.contactDamageMultiplier,
 			);
-			this.hot.attackCooldownS[runtime.slot] =
-				runtime.stats.attackCooldownS;
-		}
-		return true;
+		return inRange;
 	}
 
-	private useSpecialIfReady(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Target,
-		elapsedS: number,
-	): void {
+	private useSpecialIfReady(tick: MonsterTick): void {
+		const { monster, runtime, target, elapsedS } = tick;
 		const ai = runtime.definition.ai;
 		if (
 			ai.specialKind === 'none' ||
@@ -828,24 +595,16 @@ export class MonsterAiSystem {
 		)
 			return;
 		if (ai.specialKind === 'summon') {
-			this.updateSummon(runtime, monster, elapsedS);
+			this.updateSummon(tick);
 			return;
 		}
-		if (ai.specialKind === 'slam') {
-			this.damagePlayersInRadius(
-				this.hot.positionX[runtime.slot],
-				this.hot.positionZ[runtime.slot],
-				ai.specialRadius,
-				runtime,
-			);
-		} else {
-			this.damagePlayersInRadius(
-				target.player.x,
-				target.player.z,
-				ai.specialRadius,
-				runtime,
-			);
-		}
+		const onSelf = ai.specialKind === 'slam';
+		this.damagePlayersInRadius(
+			onSelf ? this.hot.positionX[runtime.slot] : target.player.x,
+			onSelf ? this.hot.positionZ[runtime.slot] : target.player.z,
+			ai.specialRadius,
+			runtime,
+		);
 		this.hot.specialCooldownS[runtime.slot] = ai.specialCooldownS;
 		this.setAnimation(monster, 'attack', elapsedS);
 	}
@@ -867,6 +626,13 @@ export class MonsterAiSystem {
 					runtime.definition.ai.specialDamageMultiplier,
 				);
 		}
+	}
+
+	private attackIfReady(tick: MonsterTick, damageMultiplier: number): void {
+		const { runtime, target } = tick;
+		if (this.hot.attackCooldownS[runtime.slot] > 0) return;
+		this.hitPlayer(runtime, target.sessionId, damageMultiplier);
+		this.hot.attackCooldownS[runtime.slot] = runtime.stats.attackCooldownS;
 	}
 
 	private hitPlayer(
@@ -918,20 +684,14 @@ export class MonsterAiSystem {
 		return nearest;
 	}
 
-	private move(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Vec2d,
-		speed: number,
-		dtSeconds: number,
-		stopDistance = 0,
-	): void {
+	private move(tick: MonsterTick, speed: number, stopDistance = 0): void {
+		const { monster, runtime, target, dtSeconds } = tick;
 		const slot = runtime.slot;
 		this.chaseOrigin.x = this.hot.positionX[slot];
 		this.chaseOrigin.z = this.hot.positionZ[slot];
 		const step = chaseStep(
 			this.chaseOrigin,
-			target,
+			target.player,
 			speed,
 			dtSeconds,
 			stopDistance,
@@ -941,16 +701,11 @@ export class MonsterAiSystem {
 		this.applyDesiredPosition(runtime, step.x, step.z);
 	}
 
-	private moveAway(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Vec2d,
-		speed: number,
-		dtSeconds: number,
-	): void {
+	private moveAway(tick: MonsterTick, speed: number): void {
+		const { monster, runtime, target, dtSeconds } = tick;
 		const slot = runtime.slot;
-		const dx = this.hot.positionX[slot] - target.x;
-		const dz = this.hot.positionZ[slot] - target.z;
+		const dx = this.hot.positionX[slot] - target.player.x;
+		const dz = this.hot.positionZ[slot] - target.player.z;
 		const length = Math.hypot(dx, dz) || 1;
 		const desiredX =
 			this.hot.positionX[slot] + (dx / length) * speed * dtSeconds;
@@ -984,17 +739,14 @@ export class MonsterAiSystem {
 		this.hot.positionZ[slot] = resolved.z;
 	}
 
-	private face(
-		monster: Monster,
-		runtime: MonsterRuntime,
-		target: Vec2d,
-	): void {
+	private face(tick: MonsterTick): void {
+		const { monster, runtime, target } = tick;
 		this.publishRotation(
 			monster,
 			runtime,
 			Math.atan2(
-				target.x - this.hot.positionX[runtime.slot],
-				target.z - this.hot.positionZ[runtime.slot],
+				target.player.x - this.hot.positionX[runtime.slot],
+				target.player.z - this.hot.positionZ[runtime.slot],
 			),
 		);
 	}
