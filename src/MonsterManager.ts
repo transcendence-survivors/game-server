@@ -18,7 +18,6 @@ import {
 	computeArchetypeStats,
 	difficultyStageAt,
 	bossTimeAt,
-	isBossKind,
 	type BossKind,
 	type MonsterDefinition,
 	type MonsterRank,
@@ -33,7 +32,7 @@ import type {
 	MonsterTransform,
 } from './monsters/MonsterSimulationSource';
 
-interface PendingChildSpawn extends Vec2d {
+interface SpawnRequest extends Vec2d {
 	kind: string;
 }
 
@@ -46,35 +45,17 @@ export class MonsterManager implements MonsterSimulationSource {
 	private nextMonsterId = 1;
 	private nextBossAtS = bossTimeAt(0);
 	private lastBossKind?: BossKind;
+	private nextBossKind: BossKind;
 	private readonly runtimes = new Map<string, MonsterRuntime>();
-	private readonly pendingChildSpawns: PendingChildSpawn[] = [];
-	private readonly priorityChildSpawns: PendingChildSpawn[] = [];
-	private readonly pendingDeadMonsterIds: string[] = [];
-	private normalCount = 0;
+	private readonly summonRequests: SpawnRequest[] = [];
+	private readonly deathSpawnRequests: SpawnRequest[] = [];
+	private readonly deadMonsterIds: string[] = [];
+	private regularCount = 0;
 	private eliteCount = 0;
 	private bossCount = 0;
 	private readonly spawnCandidates: MonsterDefinition[] = [];
 	private nextSpawnUnlockS = 0;
 	private readonly ai: MonsterAiSystem;
-	private readonly applyKnockbackImpulse = (
-		monsterId: string,
-		directionX: number,
-		directionZ: number,
-		projectionDistance: number,
-	): void => {
-		this.ai.addKnockback(
-			monsterId,
-			directionX,
-			directionZ,
-			projectionDistance,
-		);
-	};
-	private readonly handleMonsterDeath = (monsterId: string): void => {
-		const runtime = this.runtimes.get(monsterId);
-		if (!runtime) return;
-		this.setPopulationCounted(runtime, false);
-		this.pendingDeadMonsterIds.push(monsterId);
-	};
 
 	constructor(
 		private readonly world: World,
@@ -82,43 +63,56 @@ export class MonsterManager implements MonsterSimulationSource {
 		damage: DamageResolver,
 		private readonly random: () => number = Math.random,
 	) {
-		damage.setKnockbackHandler(this.applyKnockbackImpulse);
-		damage.setMonsterDeathHandler(this.handleMonsterDeath);
+		damage.setKnockbackHandler(
+			(monsterId, directionX, directionZ, distance) =>
+				this.ai.addKnockback(
+					monsterId,
+					directionX,
+					directionZ,
+					distance,
+				),
+		);
+		damage.setMonsterDeathHandler((monsterId) => {
+			const runtime = this.runtimes.get(monsterId);
+			if (!runtime) return;
+			this.setPopulationCounted(runtime, false);
+			this.deadMonsterIds.push(monsterId);
+		});
 		this.ai = new MonsterAiSystem(
 			world,
 			roomState,
 			damage,
 			this.runtimes,
 			(kind, x, z) => {
-				if (this.canQueueChildSpawn())
-					this.pendingChildSpawns.push({ kind, x, z });
+				if (this.canQueueSpawnRequest())
+					this.summonRequests.push({ kind, x, z });
 			},
 		);
 		damage.setMonsterSimulation(this);
-		this.roomState.nextBossKind = this.pickNextBossKind();
+		this.nextBossKind = this.pickNextBossKind();
 	}
 
 	update(dtSeconds: number): void {
 		if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
 		this.elapsedS += dtSeconds;
-		this.reconcileExternalRemovals();
-		this.pruneRuntimes();
-		this.flushChildSpawns(this.priorityChildSpawns, true);
+		this.detectExternalRemovals();
+		this.processDeaths();
+		this.spawnRequested(this.deathSpawnRequests, true);
 		this.updateBossSchedule();
 		this.fillPopulation(dtSeconds);
 
 		const removals = this.ai.update(dtSeconds, this.elapsedS);
 		for (const id of removals) this.removeMonster(id);
-		this.flushChildSpawns(this.pendingChildSpawns, false);
+		this.spawnRequested(this.summonRequests, false);
 	}
 
 	private updateBossSchedule(): void {
 		while (this.elapsedS >= this.nextBossAtS) {
-			if (this.bossCount >= MONSTER_DIRECTOR_CONFIG.bossMaxAlive) {
-				this.nextBossAtS += MONSTER_DIRECTOR_CONFIG.bossIntervalS;
-				continue;
-			}
-			if (!this.spawnBoss()) return;
+			if (
+				this.bossCount < MONSTER_DIRECTOR_CONFIG.bossMaxAlive &&
+				!this.spawnBoss()
+			)
+				return;
 			this.nextBossAtS += MONSTER_DIRECTOR_CONFIG.bossIntervalS;
 		}
 	}
@@ -132,9 +126,9 @@ export class MonsterManager implements MonsterSimulationSource {
 			return;
 
 		const stage = difficultyStageAt(this.elapsedS);
-		const totalTarget = this.normalPopulationTarget(players);
+		const totalTarget = targetPopulation(this.elapsedS, players);
 		const desired = this.clampPopulationTarget(totalTarget);
-		let currentCount = this.normalCount;
+		let currentCount = this.regularCount;
 		let eliteCount = this.eliteCount;
 		const maxEliteCount = Math.floor(
 			totalTarget * MONSTER_DIRECTOR_CONFIG.maxElitePopulationRatio,
@@ -145,7 +139,7 @@ export class MonsterManager implements MonsterSimulationSource {
 			this.spawnBudget + stage.spawnRate * dtSeconds,
 		);
 		if (currentCount >= desired) return;
-		this.refreshSpawnCandidates();
+		this.unlockSpawnCandidates();
 
 		let spawned = 0;
 		while (
@@ -165,7 +159,7 @@ export class MonsterManager implements MonsterSimulationSource {
 		}
 	}
 
-	private refreshSpawnCandidates(): void {
+	private unlockSpawnCandidates(): void {
 		if (this.elapsedS < this.nextSpawnUnlockS) return;
 		this.spawnCandidates.length = 0;
 		this.nextSpawnUnlockS = Number.POSITIVE_INFINITY;
@@ -185,27 +179,23 @@ export class MonsterManager implements MonsterSimulationSource {
 		let totalWeight = 0;
 		let lastEligible: MonsterDefinition | undefined;
 		for (const definition of this.spawnCandidates) {
-			if (
-				definition.spawn.weight > 0 &&
-				definition.spawn.cost <= this.spawnBudget
-			) {
-				totalWeight += definition.spawn.weight;
-				lastEligible = definition;
-			}
+			if (!this.canSpawn(definition)) continue;
+			totalWeight += definition.spawn.weight;
+			lastEligible = definition;
 		}
 		if (totalWeight <= 0) return undefined;
 
 		let roll = this.randomValue() * totalWeight;
 		for (const definition of this.spawnCandidates) {
-			if (
-				definition.spawn.weight <= 0 ||
-				definition.spawn.cost > this.spawnBudget
-			)
-				continue;
+			if (!this.canSpawn(definition)) continue;
 			roll -= definition.spawn.weight;
 			if (roll <= 0) return definition;
 		}
 		return lastEligible;
+	}
+
+	private canSpawn({ spawn }: MonsterDefinition): boolean {
+		return spawn.weight > 0 && spawn.cost <= this.spawnBudget;
 	}
 
 	private pickRank(
@@ -220,21 +210,17 @@ export class MonsterManager implements MonsterSimulationSource {
 	}
 
 	private spawnBoss(): boolean {
-		if (this.bossCount >= MONSTER_DIRECTOR_CONFIG.bossMaxAlive)
-			return false;
 		if (
-			this.normalCount + this.bossCount >=
+			this.regularCount + this.bossCount >=
 			MONSTER_DIRECTOR_CONFIG.totalPopulationCapacity
 		) {
 			return false;
 		}
-		const kind = isBossKind(this.roomState.nextBossKind)
-			? this.roomState.nextBossKind
-			: this.pickNextBossKind();
+		const kind = this.nextBossKind;
 		if (!this.spawnMonster(kind, 'boss', this.livingPlayerCount()))
 			return false;
 		this.lastBossKind = kind;
-		this.roomState.nextBossKind = this.pickNextBossKind();
+		this.nextBossKind = this.pickNextBossKind();
 		return true;
 	}
 
@@ -242,17 +228,14 @@ export class MonsterManager implements MonsterSimulationSource {
 		kind: string,
 		rank: MonsterRank,
 		playerCount: number,
-		x?: number,
-		z?: number,
+		at?: Vec2d,
 	): boolean {
-		if ((x === undefined) !== (z === undefined)) return false;
 		const definition = getMonsterDefinition(kind);
-		if (!definition) return false;
-		if (rank === 'boss' && definition.rank !== 'boss') return false;
-		if (rank !== 'boss' && definition.rank === 'boss') return false;
+		if (!definition || (rank === 'boss') !== (definition.rank === 'boss'))
+			return false;
 
 		let spawn: Vec3d;
-		if (x === undefined || z === undefined) {
+		if (!at) {
 			const angle = this.randomValue() * TAU;
 			const radius = MONSTER_DIRECTOR_CONFIG.spawnRingRadius;
 			spawn = this.world.groundPoint(
@@ -260,7 +243,7 @@ export class MonsterManager implements MonsterSimulationSource {
 				this.roomState.rayZ + Math.sin(angle) * radius,
 			);
 		} else {
-			spawn = this.world.groundPoint(x, z);
+			spawn = this.world.groundPoint(at.x, at.z);
 			clampPositionToCircle(
 				spawn,
 				this.roomState.rayX,
@@ -319,9 +302,9 @@ export class MonsterManager implements MonsterSimulationSource {
 		return true;
 	}
 
-	private flushChildSpawns(
-		requests: PendingChildSpawn[],
-		ignoreTarget: boolean,
+	private spawnRequested(
+		requests: SpawnRequest[],
+		ignorePopulationTarget: boolean,
 	): void {
 		if (requests.length === 0) return;
 		const players = this.livingPlayerCount();
@@ -329,22 +312,23 @@ export class MonsterManager implements MonsterSimulationSource {
 			requests.length = 0;
 			return;
 		}
-		const limit = ignoreTarget
+		const limit = ignorePopulationTarget
 			? MONSTER_DIRECTOR_CONFIG.maxPopulation
-			: this.clampPopulationTarget(this.normalPopulationTarget(players));
-		let currentCount = this.normalCount;
+			: this.clampPopulationTarget(
+					targetPopulation(this.elapsedS, players),
+				);
+		let currentCount = this.regularCount;
 		for (const request of requests) {
 			if (currentCount >= limit) break;
-			const { kind, x, z } = request;
-			if (this.spawnMonster(kind, 'normal', players, x, z))
+			if (this.spawnMonster(request.kind, 'normal', players, request))
 				currentCount++;
 		}
 		requests.length = 0;
 	}
 
-	private canQueueChildSpawn(): boolean {
+	private canQueueSpawnRequest(): boolean {
 		return (
-			this.pendingChildSpawns.length + this.priorityChildSpawns.length <
+			this.summonRequests.length + this.deathSpawnRequests.length <
 			MONSTER_DIRECTOR_CONFIG.maxSummonedSpawnsPerTick
 		);
 	}
@@ -359,17 +343,17 @@ export class MonsterManager implements MonsterSimulationSource {
 		this.runtimes.delete(id);
 	}
 
-	private pruneRuntimes(): void {
-		for (const id of this.pendingDeadMonsterIds) {
+	private processDeaths(): void {
+		for (const id of this.deadMonsterIds) {
 			const runtime = this.runtimes.get(id);
 			if (!runtime) continue;
 			const lastPosition = this.ai.lastPosition(runtime);
 			const deathSpawn = runtime.definition.onDeath;
 			if (deathSpawn) {
 				for (let index = 0; index < deathSpawn.count; index++) {
-					if (!this.canQueueChildSpawn()) break;
+					if (!this.canQueueSpawnRequest()) break;
 					const angle = this.randomValue() * TAU;
-					this.priorityChildSpawns.push({
+					this.deathSpawnRequests.push({
 						kind: deathSpawn.kind,
 						x:
 							lastPosition.x +
@@ -385,16 +369,16 @@ export class MonsterManager implements MonsterSimulationSource {
 			this.ai.unregisterMonster(runtime);
 			this.runtimes.delete(id);
 		}
-		this.pendingDeadMonsterIds.length = 0;
+		this.deadMonsterIds.length = 0;
 	}
 
-	private reconcileExternalRemovals(): void {
-		if (this.roomState.monsters.size === this.normalCount + this.bossCount)
+	private detectExternalRemovals(): void {
+		if (this.roomState.monsters.size === this.regularCount + this.bossCount)
 			return;
 		for (const [id, runtime] of this.runtimes) {
 			if (this.roomState.monsters.has(id)) continue;
 			this.setPopulationCounted(runtime, false);
-			this.pendingDeadMonsterIds.push(id);
+			this.deadMonsterIds.push(id);
 		}
 	}
 
@@ -407,7 +391,7 @@ export class MonsterManager implements MonsterSimulationSource {
 		const delta = counted ? 1 : -1;
 		if (runtime.rank === 'boss')
 			this.bossCount = Math.max(0, this.bossCount + delta);
-		else this.normalCount = Math.max(0, this.normalCount + delta);
+		else this.regularCount = Math.max(0, this.regularCount + delta);
 		if (runtime.rank === 'elite')
 			this.eliteCount = Math.max(0, this.eliteCount + delta);
 	}
@@ -418,10 +402,6 @@ export class MonsterManager implements MonsterSimulationSource {
 			if (!player.life.isDepleted()) count++;
 		});
 		return count;
-	}
-
-	private normalPopulationTarget(playerCount: number): number {
-		return targetPopulation(this.elapsedS, playerCount);
 	}
 
 	private clampPopulationTarget(target: number): number {
@@ -458,15 +438,11 @@ export class MonsterManager implements MonsterSimulationSource {
 	}
 
 	private pickNextBossKind(): BossKind {
-		const lastBoss = this.lastBossKind;
-		const excluded = lastBoss ? BOSS_KINDS.indexOf(lastBoss) : -1;
-		const available = BOSS_KINDS.length - (excluded >= 0 ? 1 : 0);
-		let index = Math.min(
-			available - 1,
-			Math.floor(this.randomValue() * available),
+		const options = BOSS_KINDS.filter((kind) => kind !== this.lastBossKind);
+		return (
+			options[Math.floor(this.randomValue() * options.length)] ??
+			BOSS_KINDS[0]
 		);
-		if (excluded >= 0 && index >= excluded) index++;
-		return BOSS_KINDS[index] ?? BOSS_KINDS[0];
 	}
 
 	private randomValue(): number {

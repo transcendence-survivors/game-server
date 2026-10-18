@@ -7,7 +7,7 @@ import type { MonsterRuntime } from './MonsterRuntime';
 
 const INITIAL_CAPACITY = 32;
 
-export class MonsterHotState {
+export class MonsterSlots {
 	positionX = new Float64Array(INITIAL_CAPACITY);
 	positionY = new Float64Array(INITIAL_CAPACITY);
 	positionZ = new Float64Array(INITIAL_CAPACITY);
