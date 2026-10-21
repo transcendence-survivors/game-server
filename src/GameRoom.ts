@@ -30,12 +30,9 @@ import {
 } from '@transcendence/game-shared';
 import { DownedSystem } from './DownedSystem';
 import { InputValidator } from './InputValidator';
-import { MonsterManager } from './MonsterManager';
-import { DamageResolver } from './combat/DamageResolver';
-import { KillRewardSystem } from './combat/KillRewardSystem';
-import { CombatEntitySystem } from './combat/CombatEntitySystem';
+import { MonsterDirector } from './monsters/MonsterDirector';
+import { DamageResolver } from './combat/damage/DamageResolver';
 import { CombatSystem } from './combat/CombatSystem';
-import { createWeaponFactory } from './combat/createWeaponFactory';
 import { GameStats, tomeKindMap, uploadStats, weaponKindMap } from './upload';
 import { StarterWeaponKind } from '../../shared-package/src/utils/Constants';
 
@@ -59,9 +56,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 	private world!: World;
 	private inputValidator!: InputValidator;
 	private damageResolver!: DamageResolver;
-	private monsterManager!: MonsterManager;
+	private monsterDirector!: MonsterDirector;
 	private combatSystem!: CombatSystem;
-	private combatEntitySystem!: CombatEntitySystem;
 	private downedSystem!: DownedSystem;
 	private readonly upgradeProgress = new Map<string, PlayerUpgradeProgress>();
 	private gameOverSent = false;
@@ -83,31 +79,26 @@ export class GameRoom extends Room<{ state: GameState }> {
 		this.state.seed = Math.floor(Math.random() * 1e9);
 		this.world = new World(this.state.seed);
 		this.inputValidator = new InputValidator(this.world, this.state);
-		const killRewards = new KillRewardSystem(
+		this.damageResolver = new DamageResolver(
 			this.state,
-			this.clients,
 			(playerId, levelsGained) => {
 				const progress = this.upgradeProgressFor(playerId);
 				progress.availableChoices += levelsGained;
+				const client = this.clients.getById(playerId);
+				for (let index = 0; client && index < levelsGained; index++)
+					client.send(ServerMessage.LevelUp);
 			},
 		);
-		this.damageResolver = new DamageResolver(this.state, killRewards);
-		this.monsterManager = new MonsterManager(
+		this.monsterDirector = new MonsterDirector(
 			this.world,
 			this.state,
 			this.damageResolver,
 		);
-		this.combatEntitySystem = new CombatEntitySystem(
-			this.state,
-			this.damageResolver,
-			(x, z) => this.world.height(x, z),
-			this.monsterManager,
-		);
 		this.combatSystem = new CombatSystem(
 			this.state,
 			this.damageResolver,
-			createWeaponFactory(),
-			this.combatEntitySystem,
+			(x, z) => this.world.height(x, z),
+			this.monsterDirector,
 		);
 		this.downedSystem = new DownedSystem(this.state);
 		this.setSimulationInterval(
@@ -161,9 +152,8 @@ export class GameRoom extends Room<{ state: GameState }> {
 			return;
 		}
 		const dtSeconds = dtMilliseconds / 1000;
-		this.monsterManager.update(dtSeconds);
+		this.monsterDirector.update(dtSeconds);
 		this.combatSystem.update(dtSeconds);
-		this.combatEntitySystem.update(dtSeconds);
 		const damage = this.damageResolver.drainImpactEvents();
 		if (damage.length) this.broadcast(ServerMessage.MonsterDamage, damage);
 		this.state.rayX += RAY_DIR_X * RAY_SPEED * dtSeconds;
@@ -355,7 +345,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 			this.downedSystem.removePlayer(client.sessionId);
 			this.upgradeProgress.delete(client.sessionId);
 			this.inputValidator.removeClient(client.sessionId);
-			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
 			this.deleteAndSavePlayer(client);
 			return;
@@ -373,7 +362,6 @@ export class GameRoom extends Room<{ state: GameState }> {
 			console.warn(`${client.sessionId} did not reconnect in time`);
 			this.upgradeProgress.delete(client.sessionId);
 			this.inputValidator.removeClient(client.sessionId);
-			this.combatEntitySystem.removeOwner(client.sessionId);
 			this.combatSystem.removePlayer(client.sessionId);
 			this.deleteAndSavePlayer(client);
 		}
