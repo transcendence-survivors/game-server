@@ -32,7 +32,6 @@ export class CombatSystem {
 	private readonly weapons = new WeakMap<WeaponState, Weapon>();
 	private readonly projectiles = new Map<string, Projectile>();
 	private readonly candidates: string[] = [];
-	private projectileClockS = 0;
 	private nextSequence = 1;
 
 	constructor(
@@ -51,7 +50,6 @@ export class CombatSystem {
 				this.weapon(owner, state).update(dtSeconds, player),
 			),
 		);
-		this.projectileClockS = this.nowS;
 		this.roomState.combatTimeS = this.nowS;
 		for (const [id, projectile] of this.projectiles) {
 			const { entity } = projectile;
@@ -76,12 +74,7 @@ export class CombatSystem {
 			return [];
 		return spawns.map((spawn) => {
 			const id = `${owner}:${this.nextSequence++}`;
-			const projectile = new Projectile(
-				id,
-				owner,
-				spawn,
-				this.projectileClockS,
-			);
+			const projectile = new Projectile(id, owner, spawn, this.nowS);
 			this.projectiles.set(id, projectile);
 			this.roomState.combatEntities.set(id, projectile.entity);
 			return projectile.entity;
